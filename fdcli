@@ -4,12 +4,18 @@ BASEDIR="$HOME/.config/fdcli"
 
 mkdir -p "$BASEDIR"
 echo > "$BASEDIR/fdcli.log"
+
 TOKEN=`cat $BASEDIR/TOKEN || echo`
 ORG=`cat $BASEDIR/ORG || echo`
 
 APIURL=https://$TOKEN@api.flowdock.com
 
 ### utilities
+
+http() {
+    log curl "$@"
+    curl -s --fail -A 'fdcli <github.com/rwos/fdcli>' "$@"
+}
 
 error() {
     echo "fdcli: error: $@" 1>&2
@@ -40,17 +46,23 @@ json_to_db() {
     json $prog
 }
 
+chunk() {
+    local len=$1
+    ### XXX FIXME: how can this be _that_ slow?
+    perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
+}
+
 ### api
 
 api_get() {
     local path=$1
-    curl -s --fail $APIURL$path || error "while" trying to GET $APIURL$path
+    http $APIURL$path || error "while" trying to GET $APIURL$path
 }
 
 ### local database
 
 db() {
-    echo $BASEDIR/$1
+    echo $BASEDIR/${1}.db
 }
 
 db_store() {
@@ -69,9 +81,9 @@ db_select() {
     do
         fieldspec+=`db_get $db | head -n 1 | \
                     tr '\t' '\n' | fgrep -xn $field | \
-                    cut -d ':' -f 1 | tr -d '\n'`,
+                    cut -d ':' -f 1 | tr -d '\n' 2>/dev/null`,
     done
-    db_get $db | tail -n +2 | cut -f ${fieldspec:0:-1}
+    db_get $db | tail -n +2 | cut -f ${fieldspec:0:-1} 2>/dev/null
 }
 
 db_update_users() {
@@ -123,50 +135,54 @@ db_update_latest_messages() {
 
 ### user interface
 
-ui_select() {
-    ### XXX broken
+UIDIR=`mktemp -d`
+
+ui_buffer() {
+    echo "$UIDIR/$1"
+}
+
+ui_buffer_store() {
+    cat > `ui_buffer $1`
+}
+
+ui_buffer_display() {
+    local name=$1
+    local x=$2
+    local y=$3
+    local w=$4
+    local h=$5
+    local word_wrap=$6
+
+    local cur_line=0
+
+    log display $name x=$x y=$y w=$w h=$h word_wrap=$word_wrap
     while read line
     do
-       echo "$line" | fgrep -xo "$1" --color=yes || echo $line
-    done
-}
-
-ui_column() {
-    local start=$1
-    local w=$2
-
-    printf "\033[1;${start}H"
-    while read line
-    do
-       printf "%-${w}.${w}s\033[1B\033[${w}D" "$line"
-    done
-}
-
-ui_display_left_sidebar() {
-    ui_column 1 15
-}
-ui_display_left_selection() {
-    sed 's/[[:graph:]]/│/' | ui_column 17 1
-}
-
-ui_display_main() {
-    ui_column 19 23
-}
-
-ui_main() {
-    clear
-    local flows=`db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort`
-    local current_flow=`echo "$flows" | head -n 1`
-    echo "$flows" | ui_display_left_sidebar
-    echo "$flows" | ui_display_left_selection
-    echo "hello test test test" | ui_display_main
+        if [ $word_wrap ]
+        then
+            printf -- "$line" | chunk $w | head -n 1
+        else
+            printf -- "$line" | chunk $w
+        fi
+    done < `ui_buffer $name` | \
+        while read line
+        do
+            if [ $cur_line -lt $h ]
+            then
+                tput cup $cur_line $x
+                printf -- "$line"
+                tput cup $cur_line $(($x + $w))
+                printf "|"
+            fi
+            cur_line=$(($cur_line + 1))
+        done
 }
 
 ### main
 
 test_connection() {
     log testing connection to flowdock
-    curl -s --fail $APIURL/organizations/$ORG > /dev/null || (
+    http $APIURL/organizations/$ORG > /dev/null || (
         echo fdcli: FATAL: Cannot connect to Flowdock
         echo Please make sure you have your personal API token in $BASEDIR/TOKEN
         echo and the name of your organization in $BASEDIR/ORG
@@ -177,7 +193,24 @@ test_connection() {
 }
 
 echo "fdcli: info: logging to $BASEDIR/fdcli.log"
-test_connection
+log hello
+
+#test_connection XXX RE-ENABLE
+
+db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows
+db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private
+
+### XXX
+### XXX TODO: make db_join which handles the sorting
+###           XXX-> but how would we restore the original sorting?
+### XXX or better: look up user
+#db_select devlounge.messages user content | head -n 50 | sort -n | join - `db users`;exit # | ui_buffer_store messages
+
+tput clear
+ui_buffer_display flows 0 0 10 6 0
+ui_buffer_display private 15 0 15 6 0
+#ui_buffer_display messages 23 0 40 60 0
+exit
 
 db_update_users &
 db_update_flows &
@@ -196,6 +229,3 @@ for job in `jobs -p`
 do
     wait $job
 done
-
-log starting user interface
-#ui_main
