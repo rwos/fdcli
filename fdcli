@@ -1,0 +1,201 @@
+#!/bin/bash
+
+BASEDIR="$HOME/.config/fdcli"
+
+mkdir -p "$BASEDIR"
+echo > "$BASEDIR/fdcli.log"
+TOKEN=`cat $BASEDIR/TOKEN || echo`
+ORG=`cat $BASEDIR/ORG || echo`
+
+APIURL=https://$TOKEN@api.flowdock.com
+
+### utilities
+
+error() {
+    echo "fdcli: error: $@" 1>&2
+    exit 1
+}
+log() {
+    echo "`date`	$@" >> "$BASEDIR/fdcli.log"
+}
+
+json() {
+    local prog=`echo "$@"`
+    python -c "import json,sys,codecs;u=codecs.getwriter('utf8');sys.stdout=u(sys.stdout);OUT=sys.stdout.write;J=json.load(sys.stdin);$prog" \
+        || error "while" parsing JSON
+}
+
+json_to_db() {
+    local prog=""
+    for field in "$@"
+    do
+        prog+="OUT('$field' + '\t');"
+    done
+    prog+="OUT('\n'); ["
+    for field in "$@"
+    do
+    prog+="OUT(x.get('$field', False).replace('\\n', '\\\\n').replace('\\t', '\\\\t') if isinstance(x.get('$field', False), basestring) else str(x.get('$field', False))) or OUT('\t') or "
+    done
+    prog+='OUT("\n") for x in J]'
+    json $prog
+}
+
+### api
+
+api_get() {
+    local path=$1
+    curl -s --fail $APIURL$path || error "while" trying to GET $APIURL$path
+}
+
+### local database
+
+db() {
+    echo $BASEDIR/$1
+}
+
+db_store() {
+    cat > `db $1`
+}
+
+db_get() {
+    cat `db $1` 2> /dev/null
+}
+
+db_select() {
+    local db=$1
+    shift
+    local fieldspec=""
+    for field in "$@"
+    do
+        fieldspec+=`db_get $db | head -n 1 | \
+                    tr '\t' '\n' | fgrep -xn $field | \
+                    cut -d ':' -f 1 | tr -d '\n'`,
+    done
+    db_get $db | tail -n +2 | cut -f ${fieldspec:0:-1}
+}
+
+db_update_users() {
+    log updating users
+    api_get /organizations/$ORG/users | json_to_db id nick name email | db_store users
+}
+
+db_update_flows() {
+    log updating flows
+    api_get /flows/all | json_to_db id parameterized_name name description joined | db_store flows
+}
+
+db_update_private() {
+    log updating private chats
+    api_get /private | json_to_db id name open | db_store private
+}
+
+db_store_messages() {
+    # ordered by date, newest first
+    local db_name=${1}.messages
+    local in=`cat`
+    local car=`echo "$in" | head -n 1`
+    local cdr=`echo "$in" | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
+
+    log storing `echo "$cdr" | wc -l` new messages "for" ${1}
+
+    local tmp=`mktemp`
+    touch `db $db_name`
+    (echo "$car"; echo "$cdr"; db_get $db_name | tail -n +2) > $tmp
+
+    local car=`cat $tmp | head -n 1`
+    local cdr=`cat $tmp | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
+    (echo "$car"; echo "$cdr") > `db $db_name`
+    rm -f $tmp
+}
+
+db_update_latest_messages() {
+    local flow_name=$1
+    local since_id=`db_select ${flow_name}.messages id | head -n 1`
+    if [ $since_id ]
+    then
+        log updating messages after $since_id "for" $flow_name
+        api_get "/flows/$ORG/$flow_name/messages?limit=100&since_id=$since_id" | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
+    else
+        log getting last few messages "for" $flow_name
+        api_get /flows/$ORG/$flow_name/messages?limit=100 | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
+    fi
+}
+
+### user interface
+
+ui_select() {
+    ### XXX broken
+    while read line
+    do
+       echo "$line" | fgrep -xo "$1" --color=yes || echo $line
+    done
+}
+
+ui_column() {
+    local start=$1
+    local w=$2
+
+    printf "\033[1;${start}H"
+    while read line
+    do
+       printf "%-${w}.${w}s\033[1B\033[${w}D" "$line"
+    done
+}
+
+ui_display_left_sidebar() {
+    ui_column 1 15
+}
+ui_display_left_selection() {
+    sed 's/[[:graph:]]/│/' | ui_column 17 1
+}
+
+ui_display_main() {
+    ui_column 19 23
+}
+
+ui_main() {
+    clear
+    local flows=`db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort`
+    local current_flow=`echo "$flows" | head -n 1`
+    echo "$flows" | ui_display_left_sidebar
+    echo "$flows" | ui_display_left_selection
+    echo "hello test test test" | ui_display_main
+}
+
+### main
+
+test_connection() {
+    log testing connection to flowdock
+    curl -s --fail $APIURL/organizations/$ORG > /dev/null || (
+        echo fdcli: FATAL: Cannot connect to Flowdock
+        echo Please make sure you have your personal API token in $BASEDIR/TOKEN
+        echo and the name of your organization in $BASEDIR/ORG
+        echo
+        echo Get the API token on https://www.flowdock.com/account/tokens
+        echo
+    )
+}
+
+echo "fdcli: info: logging to $BASEDIR/fdcli.log"
+test_connection
+
+db_update_users &
+db_update_flows &
+db_update_private &
+for job in `jobs -p`
+do
+    wait $job
+done
+
+joined=`db_select flows parameterized_name joined | awk -F '\t' '{ if ($2 == "True") print $1;}'`
+for flow in $joined
+do
+    db_update_latest_messages $flow &
+done
+for job in `jobs -p`
+do
+    wait $job
+done
+
+log starting user interface
+#ui_main
