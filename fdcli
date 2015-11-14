@@ -53,9 +53,10 @@ chunk() {
     then
         echo "$in"
     else
+        echo "$in" | fold -w 30
         ### XXX FIXME: how can this be _that_ slow?
         ### XXX remove hack above
-        echo "$in" | perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
+        #echo "$in" | perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
     fi
 }
 
@@ -155,7 +156,7 @@ db_update_latest_messages() {
 ### user interface
 
 UIDIR=`mktemp -d`
-HMARK="┉"
+HMARK="┄"
 VMARK="║"
 
 UIW=0
@@ -276,15 +277,27 @@ ui_resize() {
 }
 
 ui_redraw() {
-    tput clear
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
-    ui_buffer_display flows               0            0                 $fw             $fh 0
-    ui_buffer_display private             0 $(($fh + 1))                 $fw $(($UIH - $fh)) 0
-    ui_buffer_display_messages $(($fw + 1))            0 $(($UIW - $fw - 1))            $UIH 0
-    ui_buffer_vmark $fw   0 $UIH
-    ui_buffer_hmark 0   $fh $fw
+    local buf=$(
+        ui_buffer_display flows              0            0                 $fw             $fh 0
+        ui_buffer_display private            0 $(($fh + 1))                 $fw $(($UIH - $fh)) 0
+        ui_buffer_display_messages $(($fw + 2))           0 $(($UIW - $fw - 2))            $UIH 0
+        ui_buffer_vmark $fw   0 $UIH
+        ui_buffer_hmark 0   $fh $fw
+    )
+    log redraw buffer swap
+    tput clear
+    echo "$buf"
+}
+
+ui_update_buffers() {
+    ### XXX XXX TODO: selection + callback trigger for each buffer
+    db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows
+    db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private
+    ### XXX look up user
+    db_select devlounge.messages content | head -n 50 | ui_buffer_store messages
 }
 
 ui_init() {
@@ -300,21 +313,11 @@ ui_init() {
 MAIN() {
     log hello world
     api_test_connection
+
     ui_init
 
-    #test_connection XXX RE-ENABLE
-
-    ### XXX XXX TODO: selection + callback trigger for each buffer
-    db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows
-    db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private
-    ### XXX look up user
-    db_select devlounge.messages content | head -n 50 | ui_buffer_store messages
-
-    while read ALINE
-    do
-            echo "Read: '$ALINE'"
-    done
-    exit
+    ui_update_buffers
+    ui_redraw
 
     db_update_users &
     db_update_flows &
@@ -323,6 +326,8 @@ MAIN() {
     do
         wait $job
     done
+    ui_update_buffers
+    ui_redraw
 
     joined=`db_select flows parameterized_name joined | awk -F '\t' '{ if ($2 == "True") print $1;}'`
     for flow in $joined
@@ -333,6 +338,14 @@ MAIN() {
     do
         wait $job
     done
+    ui_update_buffers
+    ui_redraw
+
+    while read ALINE
+    do
+            echo "Read: '$ALINE'"
+    done
+    exit
 }
 
 MAIN
