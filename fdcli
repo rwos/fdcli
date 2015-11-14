@@ -48,8 +48,15 @@ json_to_db() {
 
 chunk() {
     local len=$1
-    ### XXX FIXME: how can this be _that_ slow?
-    perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
+    local in=`cat`
+    if [ `echo "$in" | wc -c` -lt $len ]
+    then
+        echo "$in"
+    else
+        ### XXX FIXME: how can this be _that_ slow?
+        ### XXX remove hack above
+        echo "$in" | perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
+    fi
 }
 
 ### api
@@ -57,6 +64,18 @@ chunk() {
 api_get() {
     local path=$1
     http $APIURL$path || error "while" trying to GET $APIURL$path
+}
+
+api_test_connection() {
+    log testing connection to flowdock
+    http $APIURL/organizations/$ORG > /dev/null || (
+        echo fdcli: FATAL: Cannot connect to Flowdock
+        echo Please make sure you have your personal API token in $BASEDIR/TOKEN
+        echo and the name of your organization in $BASEDIR/ORG
+        echo
+        echo Get the API token on https://www.flowdock.com/account/tokens
+        echo
+    )
 }
 
 ### local database
@@ -150,6 +169,7 @@ ui_buffer() {
 }
 
 ui_buffer_store() {
+    log ui buffer store `ui_buffer $1`
     cat > `ui_buffer $1`
 }
 
@@ -159,13 +179,47 @@ ui_buffer_display() {
     local y=$3
     local w=$4
     local h=$5
-    local word_wrap=$6
+    local word_wrap=$6 ### XXX remove param??
 
     local cur_line=0
 
     log display $name x=$x y=$y w=$w h=$h word_wrap=$word_wrap
     touch `ui_buffer $name`
-    ### XXX TODO: clear rectangle of area
+    ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
+    while read line
+    do
+        if [ $word_wrap ]
+        then
+            printf -- "$line" | chunk $w | head -n 1
+        else
+            printf -- "$line" | chunk $w
+        fi
+    done < `ui_buffer $name` | \
+        while read line
+        do
+            if [ $cur_line -lt $(($h - 1)) ]
+            then
+                tput cup $(($y + $cur_line)) $x
+                printf -- "$line"
+            fi
+            cur_line=$(($cur_line + 1))
+        done
+}
+
+ui_buffer_display_messages() {
+    local name="messages"
+    local x=$1
+    local y=$2
+    local w=$3
+    local h=$4
+    ##### XXX this doesn't work right
+    local word_wrap=$5 ### XXX remove param??
+
+    local cur_line=0
+
+    log display $name x=$x y=$y w=$w h=$h word_wrap=$word_wrap
+    touch `ui_buffer $name`
+    ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
     while read line
     do
         if [ $word_wrap ]
@@ -226,11 +280,11 @@ ui_redraw() {
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
-    ui_buffer_display flows   0            0 $fw             $fh 0
-    ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh)) 0
+    ui_buffer_display flows               0            0                 $fw             $fh 0
+    ui_buffer_display private             0 $(($fh + 1))                 $fw $(($UIH - $fh)) 0
+    ui_buffer_display_messages $(($fw + 1))            0 $(($UIW - $fw - 1))            $UIH 0
     ui_buffer_vmark $fw   0 $UIH
     ui_buffer_hmark 0   $fh $fw
-    #ui_buffer_display messages 23 0 40 60 0
 }
 
 ui_init() {
@@ -243,52 +297,42 @@ ui_init() {
 
 ### main
 
-test_connection() {
-    log testing connection to flowdock
-    http $APIURL/organizations/$ORG > /dev/null || (
-        echo fdcli: FATAL: Cannot connect to Flowdock
-        echo Please make sure you have your personal API token in $BASEDIR/TOKEN
-        echo and the name of your organization in $BASEDIR/ORG
-        echo
-        echo Get the API token on https://www.flowdock.com/account/tokens
-        echo
-    )
+MAIN() {
+    log hello world
+    api_test_connection
+    ui_init
+
+    #test_connection XXX RE-ENABLE
+
+    ### XXX XXX TODO: selection + callback trigger for each buffer
+    db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows
+    db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private
+    ### XXX look up user
+    db_select devlounge.messages content | head -n 50 | ui_buffer_store messages
+
+    while read ALINE
+    do
+            echo "Read: '$ALINE'"
+    done
+    exit
+
+    db_update_users &
+    db_update_flows &
+    db_update_private &
+    for job in `jobs -p`
+    do
+        wait $job
+    done
+
+    joined=`db_select flows parameterized_name joined | awk -F '\t' '{ if ($2 == "True") print $1;}'`
+    for flow in $joined
+    do
+        db_update_latest_messages $flow &
+    done
+    for job in `jobs -p`
+    do
+        wait $job
+    done
 }
 
-log hello
-ui_init
-
-#test_connection XXX RE-ENABLE
-
-db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows
-db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private
-
-### XXX
-### XXX TODO: make db_join which handles the sorting
-###           XXX-> but how would we restore the original sorting?
-### XXX or better: look up user
-#db_select devlounge.messages user content | head -n 50 | sort -n | join - `db users`;exit # | ui_buffer_store messages
-
-while read ALINE
-do
-        echo "Read: '$ALINE'"
-done
-exit
-
-db_update_users &
-db_update_flows &
-db_update_private &
-for job in `jobs -p`
-do
-    wait $job
-done
-
-joined=`db_select flows parameterized_name joined | awk -F '\t' '{ if ($2 == "True") print $1;}'`
-for flow in $joined
-do
-    db_update_latest_messages $flow &
-done
-for job in `jobs -p`
-do
-    wait $job
-done
+MAIN
