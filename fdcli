@@ -1,5 +1,17 @@
 #!/bin/bash
 
+#### XXX TODO:
+####
+####
+####
+####
+####   send all stderr to log file - re-check the /dev/null stuff
+####
+####
+####
+####
+####
+
 BASEDIR="$HOME/.config/fdcli"
 
 mkdir -p "$BASEDIR"
@@ -46,6 +58,10 @@ json_to_db() {
     json $prog
 }
 
+##### XXX this is wrong
+##### it should:
+#####  --- never break escape sequences
+#####  --- never break unicode
 chunk() {
     local len=$1
     local in=`cat`
@@ -53,10 +69,10 @@ chunk() {
     then
         echo "$in"
     else
-        echo "$in" | fold -w 30
+        #echo "$in" | fold -w 30
         ### XXX FIXME: how can this be _that_ slow?
         ### XXX remove hack above
-        #echo "$in" | perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
+        echo "$in" | perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
     fi
 }
 
@@ -180,7 +196,6 @@ ui_buffer_display() {
     local y=$3
     local w=$4
     local h=$5
-    local word_wrap=$6 ### XXX remove param??
 
     local cur_line=0
 
@@ -189,12 +204,7 @@ ui_buffer_display() {
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
     while read line
     do
-        if [ $word_wrap ]
-        then
-            printf -- "$line" | chunk $w | head -n 1
-        else
-            printf -- "$line" | chunk $w
-        fi
+        printf -- "$line" | chunk $w | head -n 1
     done < `ui_buffer $name` | \
         while read line
         do
@@ -207,6 +217,19 @@ ui_buffer_display() {
         done
 }
 
+bold=`tput bold`
+special=`tput setab 5`
+off=`tput sgr0`
+
+underline=`tput smul`
+offunderline=`tput rmul`
+
+ui_enhance_message() {
+    sed \
+        -e "s/https\\?:[^[:space:]]*/$underline\0$offunderline/g" \
+        -e "s/:[^[:space:]]*:/$special\0$off/g"
+}
+
 ui_buffer_display_messages() {
     local name="messages"
     local x=$1
@@ -214,22 +237,18 @@ ui_buffer_display_messages() {
     local w=$3
     local h=$4
     ##### XXX this doesn't work right
-    local word_wrap=$5 ### XXX remove param??
 
     local cur_line=0
 
     log display $name x=$x y=$y w=$w h=$h word_wrap=$word_wrap
     touch `ui_buffer $name`
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
-    while read line
+    ### XXX move this line-replacing thing into its own function (flow descriptions also have that...)
+    cat `ui_buffer $name` | sed 's/\\n/\n/g' | while read line
     do
-        if [ $word_wrap ]
-        then
-            printf -- "$line" | chunk $w | head -n 1
-        else
-            printf -- "$line" | chunk $w
-        fi
-    done < `ui_buffer $name` | \
+        ### XXX ui_enhance message does not have to run here!!!
+        printf -- "$line" | ui_enhance_message | chunk $w
+    done | \
         while read line
         do
             if [ $cur_line -lt $(($h - 1)) ]
@@ -280,24 +299,32 @@ ui_redraw() {
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
-    local buf=$(
-        ui_buffer_display flows              0            0                 $fw             $fh 0
-        ui_buffer_display private            0 $(($fh + 1))                 $fw $(($UIH - $fh)) 0
-        ui_buffer_display_messages $(($fw + 2))           0 $(($UIW - $fw - 2))            $UIH 0
-        ui_buffer_vmark $fw   0 $UIH
-        ui_buffer_hmark 0   $fh $fw
-    )
-    log redraw buffer swap
+    ui_buffer_display flows              0            0                 $fw             $fh | ui_buffer_store flows.rendered &
+    ui_buffer_display private            0 $(($fh + 1))                 $fw $(($UIH - $fh)) | ui_buffer_store private.rendered &
+    ui_buffer_display_messages $(($fw + 2))           0 $(($UIW - $fw - 2))            $UIH | ui_buffer_store messages.rendered &
+    ui_buffer_vmark $fw   0 $UIH | ui_buffer_store vmark.rendered &
+    ui_buffer_hmark 0   $fh $fw | ui_buffer_store hmark.rendered &
+    for job in `jobs -p` #### XXX XXX TODO: move into function
+    do
+        wait $job
+    done
+    log redraw buffer swap UIDIR=$UIDIR
     tput clear
-    echo "$buf"
+    cat $UIDIR/*.rendered
 }
 
 ui_update_buffers() {
     ### XXX XXX TODO: selection + callback trigger for each buffer
-    db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows
-    db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private
+    db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows &
+    db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private &
     ### XXX look up user
-    db_select devlounge.messages content | head -n 50 | ui_buffer_store messages
+    ### XXX select only "messages"
+    ### XXX =====> write a custom select function for this
+    db_select devlounge.messages content | head -n 50 | tac | ui_buffer_store messages &
+    for job in `jobs -p`
+    do
+        wait $job
+    done
 }
 
 ui_init() {
