@@ -122,6 +122,10 @@ db_where() {
     awk -F '\t' "{ if (\$1 == \"$id\") { \$1=\"\"; print \$0; }}"
 }
 
+db_join() {
+    cat ### XXX TODO
+}
+
 db_update_users() {
     log updating users
     api_get /organizations/$ORG/users | json_to_db id nick name email | db_store users
@@ -219,6 +223,7 @@ ui_buffer_display() {
 
 bold=`tput bold`
 special=`tput setab 5`
+name=`tput setab 6`
 off=`tput sgr0`
 
 underline=`tput smul`
@@ -226,8 +231,10 @@ offunderline=`tput rmul`
 
 ui_enhance_message() {
     sed \
-        -e "s/https\\?:[^[:space:]]*/$underline\0$offunderline/g" \
-        -e "s/:[^[:space:]]*:/$special\0$off/g"
+        -e "s/\t/ /g" \
+        -e "s/https\\?:[^[:space:]]\+/$underline\0$offunderline/g" \
+        -e "s/:[^[:space:]]\+:/$special\0$off/g" \
+        -e "s/@[^[:space:]]\+:/$bold$name\0$off/g"
 } 2> >(logpipe)
 
 ui_buffer_display_messages() {
@@ -299,16 +306,13 @@ ui_redraw() {
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
-    ui_buffer_display flows 0 0 $fw $fh | ui_buffer_store flows.rendered &
-    ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh)) | ui_buffer_store private.rendered &
-    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 2 | ui_buffer_store flowtitle.rendered &
-    ui_buffer_display_messages $(($fw + 2)) 2 $(($UIW - $fw - 2)) $((UIH - 3)) | ui_buffer_store messages.rendered &
-    ui_buffer_vmark $fw 0 $UIH | ui_buffer_store vmark.rendered &
-    ui_buffer_hmark 0 $fh $fw | ui_buffer_store hmark.rendered &
-    wait_jobs
-    log redraw buffer swap UIDIR=$UIDIR
     tput clear
-    cat $UIDIR/*.rendered
+    ui_buffer_display flows 0 0 $fw $fh
+    ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh))
+    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 2
+    ui_buffer_display_messages $(($fw + 2)) 2 $(($UIW - $fw - 2)) $((UIH - 3))
+    ui_buffer_vmark $fw 0 $UIH
+    ui_buffer_hmark 0 $fh $fw
 } 2> >(logpipe)
 
 CURRENT_FLOW=devlounge
@@ -316,11 +320,11 @@ ui_update_buffers() {
     ### XXX XXX TODO: selection + callback trigger for each buffer
     db_select flows joined name | db_where True | sort | ui_buffer_store flows &
     db_select private open name | db_where True | sort | ui_buffer_store private &
+    db_select flows parameterized_name name description | db_where ${CURRENT_FLOW} | tr '\t' '\n' | ui_buffer_store flowtitle &
     ### XXX look up user
     ### XXX select only "messages"
     ### XXX =====> write a custom select function for this
-    db_select ${CURRENT_FLOW}.messages content | head -n 50 | tac | ui_buffer_store messages &
-    db_select flows parameterized_name name description | db_where ${CURRENT_FLOW} | tr '\t' '\n' | ui_buffer_store flowtitle &
+    db_select ${CURRENT_FLOW}.messages user sent content | db_join users | head -n 50 | tac | ui_buffer_store messages &
     wait_jobs
 } 2> >(logpipe)
 
