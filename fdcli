@@ -109,12 +109,18 @@ db_select() {
     local fieldspec=""
     for field in "$@"
     do
-        fieldspec+=`db_get $db | head -n 1 | \
+        local fieldnum=`db_get $db | head -n 1 | \
                     tr '\t' '\n' | fgrep -xn $field | \
-                    cut -d ':' -f 1 | tr -d '\n'`,
+                    cut -d ':' -f 1 | tr -d '\n'`
+        fieldspec+="\$$fieldnum \"\t\" "
     done
-    db_get $db | tail -n +2 | cut -f ${fieldspec:0:-1}
+    db_get $db | tail -n +2 | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
 } 2> >(logpipe)
+
+db_where() {
+    local id=$1
+    awk -F '\t' "{ if (\$1 == \"$id\") { \$1=\"\"; print \$0; }}"
+}
 
 db_update_users() {
     log updating users
@@ -182,7 +188,7 @@ ui_buffer() {
 ui_buffer_store() {
     log ui buffer store `ui_buffer $1`
     cat > `ui_buffer $1`
-}
+} 2> >(logpipe)
 
 ui_buffer_display() {
     local name=$1
@@ -209,7 +215,7 @@ ui_buffer_display() {
             fi
             cur_line=$(($cur_line + 1))
         done
-}
+} 2> >(logpipe)
 
 bold=`tput bold`
 special=`tput setab 5`
@@ -222,7 +228,7 @@ ui_enhance_message() {
     sed \
         -e "s/https\\?:[^[:space:]]*/$underline\0$offunderline/g" \
         -e "s/:[^[:space:]]*:/$special\0$off/g"
-}
+} 2> >(logpipe)
 
 ui_buffer_display_messages() {
     local name="messages"
@@ -252,7 +258,7 @@ ui_buffer_display_messages() {
             fi
             cur_line=$(($cur_line + 1))
         done
-}
+} 2> >(logpipe)
 
 ui_buffer_vmark() {
     local x=$1
@@ -266,7 +272,7 @@ ui_buffer_vmark() {
         printf "$VMARK"
     done
     tput sgr0
-}
+} 2> >(logpipe)
 
 ui_buffer_hmark() {
     local x=$1
@@ -280,7 +286,7 @@ ui_buffer_hmark() {
         printf "$HMARK"
     done
     tput sgr0
-}
+} 2> >(logpipe)
 
 ui_resize() {
     UIW=`tput cols`
@@ -293,27 +299,30 @@ ui_redraw() {
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
-    ui_buffer_display flows              0            0                 $fw             $fh | ui_buffer_store flows.rendered &
-    ui_buffer_display private            0 $(($fh + 1))                 $fw $(($UIH - $fh)) | ui_buffer_store private.rendered &
-    ui_buffer_display_messages $(($fw + 2))           0 $(($UIW - $fw - 2))            $UIH | ui_buffer_store messages.rendered &
-    ui_buffer_vmark $fw   0 $UIH | ui_buffer_store vmark.rendered &
-    ui_buffer_hmark 0   $fh $fw | ui_buffer_store hmark.rendered &
+    ui_buffer_display flows 0 0 $fw $fh | ui_buffer_store flows.rendered &
+    ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh)) | ui_buffer_store private.rendered &
+    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 2 | ui_buffer_store flowtitle.rendered &
+    ui_buffer_display_messages $(($fw + 2)) 2 $(($UIW - $fw - 2)) $((UIH - 3)) | ui_buffer_store messages.rendered &
+    ui_buffer_vmark $fw 0 $UIH | ui_buffer_store vmark.rendered &
+    ui_buffer_hmark 0 $fh $fw | ui_buffer_store hmark.rendered &
     wait_jobs
     log redraw buffer swap UIDIR=$UIDIR
     tput clear
     cat $UIDIR/*.rendered
-}
+} 2> >(logpipe)
 
+CURRENT_FLOW=devlounge
 ui_update_buffers() {
     ### XXX XXX TODO: selection + callback trigger for each buffer
-    db_select flows name joined | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store flows &
-    db_select private name open | awk -F '\t' '{ if ($2 == "True") print $1;}' | sort | ui_buffer_store private &
+    db_select flows joined name | db_where True | sort | ui_buffer_store flows &
+    db_select private open name | db_where True | sort | ui_buffer_store private &
     ### XXX look up user
     ### XXX select only "messages"
     ### XXX =====> write a custom select function for this
-    db_select devlounge.messages content | head -n 50 | tac | ui_buffer_store messages &
+    db_select ${CURRENT_FLOW}.messages content | head -n 50 | tac | ui_buffer_store messages &
+    db_select flows parameterized_name name description | db_where ${CURRENT_FLOW} | tr '\t' '\n' | ui_buffer_store flowtitle &
     wait_jobs
-}
+} 2> >(logpipe)
 
 ui_init() {
     tput smcup
@@ -346,7 +355,7 @@ MAIN() {
     ui_update_buffers
     ui_redraw
 
-    joined=`db_select flows parameterized_name joined | awk -F '\t' '{ if ($2 == "True") print $1;}'`
+    joined=`db_select flows joined parameterized_name | db_where True`
     for flow in $joined
     do
         db_update_latest_messages $flow &
