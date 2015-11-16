@@ -326,7 +326,8 @@ ui_update_buffers() {
 
 ui_init() {
     tput smcup
-    trap "tput rmcup; tput sgr0" INT TERM EXIT
+    trap "tput rmcup; tput sgr0" EXIT
+    #### XXX https://bugzilla.redhat.com/show_bug.cgi?id=1197768
     trap "ui_resize" WINCH
     tput civis
     ui_resize
