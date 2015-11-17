@@ -53,14 +53,14 @@ json_to_db() {
 } 2> >(logpipe)
 
 chunk() {
-    local len=$1
+    local len=72 ##### XXX should be maximum 72, but do use $1
     #### XXX hack needed so that fold doesn't remove newlines(???)
     local in=`cat`
     if [ `echo "$in" | wc -c` -lt $len ]
     then
         echo "$in"
     else
-        echo "$in" | fold -w $len
+        echo "$in" | fold -w $len -s
     fi
 } 2> >(logpipe)
 
@@ -120,19 +120,17 @@ db_join() {
     local db=$1
     local id_field=$2
     local data_field=$3
+    db_format "db_select $db $id_field $data_field | db_where %s"
+}
+
+db_format() {
     while read line
     do
         local car=`echo "$line" | cut -d '	' -f 1`
         local cdr=`echo "$line" | cut -d '	' -f 2-`
-        printf '%s\t%s\n' "`db_select $db $id_field $data_field | db_where $car`" "$cdr"
+        local prog="`printf "$1" "$car"`"
+        printf '%s\t%s\n' "`eval "$prog"`" "$cdr"
     done
-}
-
-db_format() {
-    #### XXX select field to format + give format function
-    #### TODO: use to fixed-field format the name (printf)
-    #### TODO: implement join in terms of format
-    cat
 }
 
 db_print() {
@@ -322,6 +320,7 @@ ui_resize() {
 }
 
 ui_redraw() {
+#### XXX TODO: hide cursor, but only here
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
@@ -329,9 +328,11 @@ ui_redraw() {
     ui_buffer_display flows 0 0 $fw $fh
     ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh))
     ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 2
-    ui_buffer_display_messages $(($fw + 2)) 2 $(($UIW - $fw - 2)) $((UIH - 3))
+    ui_buffer_display_messages $(($fw + 2)) 4 $(($UIW - $fw - 2)) $((UIH - 4))
     ui_buffer_vmark $fw 0 $UIH
     ui_buffer_hmark 0 $fh $fw
+    # go back to input field
+    tput cup 1 $(($fw + 2))
 } 2> >(logpipe)
 
 CURRENT_FLOW=devlounge
@@ -352,12 +353,12 @@ ui_init() {
     trap "tput rmcup; tput sgr0" EXIT
     #### XXX https://bugzilla.redhat.com/show_bug.cgi?id=1197768
     trap "ui_resize" WINCH
-    tput civis
     ui_resize
 }
 
 ### main
 
+#### XXX REORDER
 MAIN() {
     mkdir -p "$BASEDIR"
     echo > "$BASEDIR/fdcli.log"
@@ -370,7 +371,6 @@ MAIN() {
     ui_update_buffers
     ui_redraw
 
-    # XXX
     #db_update_users &
     #db_update_flows &
     #db_update_private &
@@ -383,17 +383,19 @@ MAIN() {
     joined=`db_select flows joined parameterized_name | db_where True`
     for flow in $joined
     do
-        echo "--" ### XXX
-        #db_update_latest_messages $flow & # XXX
+        echo 
+        #db_update_latest_messages $flow &
     done
     wait_jobs
 
     ui_update_buffers
     ui_redraw
 
-    while read ALINE
+    while read -r input
     do
-            echo "Read: '$ALINE'"
+        ### TODO: parse \n as a newline
+        ### TODO: backspace destroys the line - maybe read char by char?
+        echo "POST '$input'"
     done
     exit
 }
