@@ -52,21 +52,15 @@ json_to_db() {
     json $prog
 } 2> >(logpipe)
 
-##### XXX this is wrong
-##### it should:
-#####  --- never break escape sequences
-#####  --- never break unicode
 chunk() {
     local len=$1
+    #### XXX hack needed so that fold doesn't remove newlines(???)
     local in=`cat`
     if [ `echo "$in" | wc -c` -lt $len ]
     then
         echo "$in"
     else
-        #echo "$in" | fold -w 30
-        ### XXX FIXME: how can this be _that_ slow?
-        ### XXX remove hack above
-        echo "$in" | perl -CS -e "{@x=<>=~/(\\X{1,$len})/g;foreach(@x){print \"\$_\\n\";}}"
+        echo "$in" | fold -w $len
     fi
 } 2> >(logpipe)
 
@@ -123,7 +117,27 @@ db_where() {
 }
 
 db_join() {
-    cat ### XXX TODO
+    local db=$1
+    local id_field=$2
+    local data_field=$3
+    while read line
+    do
+        local car=`echo "$line" | cut -d '	' -f 1`
+        local cdr=`echo "$line" | cut -d '	' -f 2-`
+        printf '%s\t%s\n' "`db_select $db $id_field $data_field | db_where $car`" "$cdr"
+    done
+}
+
+db_format() {
+    #### XXX select field to format + give format function
+    #### TODO: use to fixed-field format the name (printf)
+    #### TODO: implement join in terms of format
+    cat
+}
+
+db_print() {
+    #### XXX give awk spec, basically - to re-order fields and stuff
+    cat
 }
 
 db_update_users() {
@@ -223,18 +237,22 @@ ui_buffer_display() {
 
 bold=`tput bold`
 special=`tput setab 5`
-name=`tput setab 6`
+tput_name=`tput setab 3; tput setaf 0`
 off=`tput sgr0`
 
 underline=`tput smul`
 offunderline=`tput rmul`
 
 ui_enhance_message() {
+    #### XXX instead of the first few ones - make a new function to format DB fields
+    ### XXX see db_format
     sed \
+        -e "s/^[^[:space:]]\+/$bold\0$off/" \
         -e "s/\t/ /g" \
+        -e "s/\\n/\r/g" \
         -e "s/https\\?:[^[:space:]]\+/$underline\0$offunderline/g" \
         -e "s/:[^[:space:]]\+:/$special\0$off/g" \
-        -e "s/@[^[:space:]]\+:/$bold$name\0$off/g"
+        -e "s/@[^[:space:]]\+:/$bold\0$off/g"
 } 2> >(logpipe)
 
 ui_buffer_display_messages() {
@@ -250,14 +268,15 @@ ui_buffer_display_messages() {
     log display $name x=$x y=$y w=$w h=$h
     touch `ui_buffer $name`
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
-    ### XXX move this line-replacing thing into its own function (flow descriptions also have that...)
     cat `ui_buffer $name` | sed 's/\\n/\n/g' | while read line
     do
         ### XXX ui_enhance message does not have to run here!!!
         printf -- "$line" | ui_enhance_message | chunk $w
+        printf "\n"
     done | \
-        while read line
+        while read line ### XXX this destroys empty newlines?
         do
+            log "MSG LINE $line" # XXX
             if [ $cur_line -lt $(($h - 1)) ]
             then
                 tput cup $(($y + $cur_line)) $x
@@ -324,7 +343,7 @@ ui_update_buffers() {
     ### XXX look up user
     ### XXX select only "messages"
     ### XXX =====> write a custom select function for this
-    db_select ${CURRENT_FLOW}.messages user sent content | db_join users | head -n 50 | tac | ui_buffer_store messages &
+    db_select ${CURRENT_FLOW}.messages user sent content | db_join users id nick | head -n 50 | ui_buffer_store messages &
     wait_jobs
 } 2> >(logpipe)
 
@@ -351,9 +370,10 @@ MAIN() {
     ui_update_buffers
     ui_redraw
 
-    db_update_users &
-    db_update_flows &
-    db_update_private &
+    # XXX
+    #db_update_users &
+    #db_update_flows &
+    #db_update_private &
     wait_jobs
 
     ### XXX only update flow buffer, and do so right after db_update_flows, etc.
@@ -363,7 +383,8 @@ MAIN() {
     joined=`db_select flows joined parameterized_name | db_where True`
     for flow in $joined
     do
-        db_update_latest_messages $flow &
+        echo "--" ### XXX
+        #db_update_latest_messages $flow & # XXX
     done
     wait_jobs
 
