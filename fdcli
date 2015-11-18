@@ -123,14 +123,15 @@ db_select() {
 
 db_where() {
     local id=$1
-    awk -F '\t' "{ if (\$1 == \"$id\") { \$1=\"\"; print \$0; }}"
+    awk -F '\t' "{ if (\$1 == \"$id\") { OFS=\"	\"; \$1=\"\"; print \$0; }}"
 }
 
 db_join() {
     local db=$1
     local id_field=$2
     local data_field=$3
-    db_format 1 "db_select $db $id_field $data_field | db_where %s"
+    #### XXX without db_where seems to put out a tab too much or something
+    db_format 1 "db_select $db $id_field $data_field | db_where %s | tr -d '[[:space:]]'"
 }
 
 db_format() {
@@ -138,9 +139,9 @@ db_format() {
     local prog_template=$2
     while read line
     do
-        local orig=`echo "$line" | cut -d '	' -f $field`
+        local orig="`echo "$line" | cut -d '	' -f "$field"`"
+        ##### XXX shell-escape this
         local prog="`printf "$prog_template" "$orig"`"
-        #### XXX sometimes this errors out, why?
         local new="`eval "$prog"`"
         echo "$line" | awk -F '\t' "{ OFS=\"	\"; \$$field=\"$new\"; print }"
     done
@@ -346,13 +347,16 @@ CURRENT_FLOW=devlounge ###XXX move
 
 ui_update_buffers() {
     ### XXX XXX TODO: selection + callback trigger for each buffer
-    db_select flows joined name | db_where True | sort | ui_buffer_store flows &
-    db_select private open name | db_where True | sort | ui_buffer_store private &
-    db_select flows parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | ui_buffer_store flowtitle &
-    db_select ${CURRENT_FLOW}.messages user sent content | head -n 50 | \
-        db_join users id nick | \
+    db_select flows joined name parameterized_name | db_where True | sort | \
         db_format 1 'printf "${bold}%10.10s${off}"' | \
+        ui_buffer_store flows &
+    db_select private open name | db_where True | sort | ui_buffer_store private &
+    #### XXX the grep is only needed because db_where is borked
+    db_select flows parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | grep -v '^$' | ui_buffer_store flowtitle &
+    db_select "${CURRENT_FLOW}.messages" event user sent content | db_where message | head -n 50 | \
+        db_join users id nick | \
         db_format 2 'date -R -d "@$((%s / 1000))" | cut -d " " -f 2,3,4,5' | \
+        db_format 1 'printf "${bold}%10.10s${off}"' | \
         db_format 3 'ui_render_message "%s"' | \
         db_print '"["$2"] "$1" "$3' | ui_buffer_store messages &
     wait_jobs
@@ -393,21 +397,60 @@ MAIN() {
     joined=`db_select flows joined parameterized_name | db_where True`
     for flow in $joined
     do
-        echo 
+        echo
         db_update_latest_messages $flow &
     done
     wait_jobs
 
+    CURRENT_FLOW=`echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]'`
+
     ui_update_buffers
     ui_redraw
 
-    while read -r input
+
+    while true
     do
-        ### TODO: parse \n as a newline
-        ### TODO: backspace destroys the line - maybe read char by char?
-        echo "$input" | api_post_unthreaded $CURRENT_FLOW
-        db_update_latest_messages $CURRENT_FLOW
-        ui_redraw
+        read -n 1 key
+        ui_redraw ## XXX actually, only clear field
+        case "$key" in
+        r )
+            db_update_latest_messages $CURRENT_FLOW
+            ui_redraw
+            ;;
+        c )
+            read -r flow
+            local newflow="`db_select flows joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]'`"
+            if [ -z "$newflow" ]
+            then
+                ui_redraw ### XXX actually, only clear field
+                log INVALID FLOW ###XXX
+                echo INVALID FLOW ###XXX
+            else
+                CURRENT_FLOW=$newflow
+                db_update_latest_messages $CURRENT_FLOW
+                ui_update_buffers
+                ui_redraw
+            fi
+            ;;
+        i )
+            read -r input
+            ### TODO: parse \n as a newline
+            ### TODO: backspace destroys the line - maybe read char by char?
+            echo "$input" | api_post_unthreaded $CURRENT_FLOW
+            db_update_latest_messages $CURRENT_FLOW
+            ui_update_buffers
+            ui_redraw
+            ;;
+        q )
+            exit;
+            ;;
+        * )
+            log INVALID INPUT ###XXX
+            echo INVALID INPUT ###XXX
+            sleep 1
+            ui_redraw
+            ;;
+        esac
     done
     exit
 }
