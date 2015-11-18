@@ -19,7 +19,7 @@ wait_jobs() {
 http() {
     log curl "$@"
     curl -s --fail -A 'fdcli <github.com/rwos/fdcli>' "$@"
-}
+} 2> >(logpipe)
 
 log() {
     echo "`date`	$@" >> "$BASEDIR/fdcli.log"
@@ -53,7 +53,7 @@ json_to_db() {
 } 2> >(logpipe)
 
 chunk() {
-    local len=72 ##### XXX should be maximum 72, but do use $1
+    local len=$1
     #### XXX hack needed so that fold doesn't remove newlines(???)
     local in=`cat`
     if [ `echo "$in" | wc -c` -lt $len ]
@@ -69,6 +69,16 @@ chunk() {
 api_get() {
     local path=$1
     http $APIURL$path
+} 2> >(logpipe)
+
+api_post_unthreaded() {
+    local flowname=$1
+    local msg="`cat`"
+    local body="{\"event\":\"message\",\"content\":\"$msg\"}"
+    #### XXX switch to form-encoded
+    log POSTING "$body"
+    log POSTING TO "$APIURL/flows/$ORG/$flowname/messages"
+    echo "$body" | http -X POST -H 'Content-Type: application/json' POST -d @- "$APIURL/flows/$ORG/$flowname/messages" | logpipe
 } 2> >(logpipe)
 
 api_test_connection() {
@@ -130,6 +140,7 @@ db_format() {
     do
         local orig=`echo "$line" | cut -d '	' -f $field`
         local prog="`printf "$prog_template" "$orig"`"
+        #### XXX sometimes this errors out, why?
         local new="`eval "$prog"`"
         echo "$line" | awk -F '\t' "{ OFS=\"	\"; \$$field=\"$new\"; print }"
     done
@@ -331,18 +342,19 @@ ui_redraw() {
     tput cup 1 $(($fw + 2))
 } 2> >(logpipe)
 
-CURRENT_FLOW=devlounge
+CURRENT_FLOW=devlounge ###XXX move
+
 ui_update_buffers() {
     ### XXX XXX TODO: selection + callback trigger for each buffer
     db_select flows joined name | db_where True | sort | ui_buffer_store flows &
     db_select private open name | db_where True | sort | ui_buffer_store private &
-    db_select flows parameterized_name name description | db_where ${CURRENT_FLOW} | tr '\t' '\n' | ui_buffer_store flowtitle &
+    db_select flows parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | ui_buffer_store flowtitle &
     db_select ${CURRENT_FLOW}.messages user sent content | head -n 50 | \
         db_join users id nick | \
-        db_format 1 'printf "${bold}%s${off}"' | \
+        db_format 1 'printf "${bold}%10.10s${off}"' | \
         db_format 2 'date -R -d "@$((%s / 1000))" | cut -d " " -f 2,3,4,5' | \
         db_format 3 'ui_render_message "%s"' | \
-        db_print '$1" "$2" "$3' | ui_buffer_store messages &
+        db_print '"["$2"] "$1" "$3' | ui_buffer_store messages &
     wait_jobs
 } 2> >(logpipe)
 
@@ -393,7 +405,8 @@ MAIN() {
     do
         ### TODO: parse \n as a newline
         ### TODO: backspace destroys the line - maybe read char by char?
-        echo "POST '$input'"
+        echo "$input" | api_post_unthreaded $CURRENT_FLOW
+        ui_redraw
     done
     exit
 }
