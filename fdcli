@@ -394,7 +394,7 @@ MAIN() {
     for flow in $joined
     do
         echo 
-        #db_update_latest_messages $flow &
+        db_update_latest_messages $flow &
     done
     wait_jobs
 
@@ -406,6 +406,7 @@ MAIN() {
         ### TODO: parse \n as a newline
         ### TODO: backspace destroys the line - maybe read char by char?
         echo "$input" | api_post_unthreaded $CURRENT_FLOW
+        db_update_latest_messages $CURRENT_FLOW
         ui_redraw
     done
     exit
