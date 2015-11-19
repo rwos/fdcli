@@ -7,197 +7,87 @@ ORG=`cat $BASEDIR/ORG || echo`
 
 APIURL=https://$TOKEN@api.flowdock.com
 
-### utilities
+MAIN() {
+    mkdir -p "$BASEDIR"
+    echo > "$BASEDIR/fdcli.log"
 
-wait_jobs() {
-    for job in `jobs -p`
+    log hello world
+    api_test_connection
+
+    ui_init
+
+    ui_update_buffers
+    ui_redraw
+
+    db_update_users &
+    db_update_flows &
+    db_update_private &
+    wait_jobs
+
+    ### XXX only update flow buffer, and do so right after db_update_flows, etc.
+    ui_update_buffers
+    ui_redraw
+
+    joined=`db_select flows joined parameterized_name | db_where True`
+    for flow in $joined
     do
-        wait $job
-    done
-}
-
-http() {
-    log curl "$@"
-    curl -s --fail -A 'fdcli <github.com/rwos/fdcli>' "$@"
-} 2> >(logpipe)
-
-log() {
-    echo "`date`	$@" >> "$BASEDIR/fdcli.log"
-}
-
-logpipe() {
-    while read line
-    do
-        echo "`date`	STDERR: $line" >> "$BASEDIR/fdcli.log"
-    done
-}
-
-json() {
-    local prog=`echo "$@"`
-    python -c "import json,sys,codecs;u=codecs.getwriter('utf8');sys.stdout=u(sys.stdout);OUT=sys.stdout.write;J=json.load(sys.stdin);$prog"
-} 2> >(logpipe)
-
-json_to_db() {
-    local prog=""
-    for field in "$@"
-    do
-        prog+="OUT('$field' + '\t');"
-    done
-    prog+="OUT('\n'); ["
-    for field in "$@"
-    do
-    prog+="OUT(x.get('$field', False).replace('\\n', '\\\\n').replace('\\t', '\\\\t') if isinstance(x.get('$field', False), basestring) else str(x.get('$field', False))) or OUT('\t') or "
-    done
-    prog+='OUT("\n") for x in J]'
-    json $prog
-} 2> >(logpipe)
-
-chunk() {
-    local len=$1
-    #### XXX hack needed so that fold doesn't remove newlines(???)
-    local in=`cat`
-    if [ `echo "$in" | wc -c` -lt $len ]
-    then
-        echo "$in"
-    else
-        echo "$in" | fold -w $len -s
-    fi
-} 2> >(logpipe)
-
-### api
-
-api_get() {
-    local path=$1
-    http $APIURL$path
-} 2> >(logpipe)
-
-api_post_unthreaded() {
-    local flowname=$1
-    local msg="`cat`"
-    local body="{\"event\":\"message\",\"content\":\"$msg\"}"
-    #### XXX switch to form-encoded
-    log POSTING "$body"
-    log POSTING TO "$APIURL/flows/$ORG/$flowname/messages"
-    echo "$body" | http -X POST -H 'Content-Type: application/json' POST -d @- "$APIURL/flows/$ORG/$flowname/messages" | logpipe
-} 2> >(logpipe)
-
-api_test_connection() {
-    log testing connection to flowdock
-    http $APIURL/organizations/$ORG > /dev/null || (
-        echo fdcli: FATAL: Cannot connect to Flowdock
-        echo Please make sure you have your personal API token in $BASEDIR/TOKEN
-        echo and the name of your organization in $BASEDIR/ORG
         echo
-        echo Get the API token on https://www.flowdock.com/account/tokens
-        echo
-    )
-}
-
-### local database
-
-db() {
-    echo $BASEDIR/${1}.db
-}
-
-db_store() {
-    cat > `db $1`
-} 2> >(logpipe)
-
-db_get() {
-    cat `db $1`
-} 2> >(logpipe)
-
-db_select() {
-    local db=$1
-    shift
-    local fieldspec=""
-    for field in "$@"
-    do
-        local fieldnum=`db_get $db | head -n 1 | \
-                    tr '\t' '\n' | fgrep -xn $field | \
-                    cut -d ':' -f 1 | tr -d '\n'`
-        fieldspec+="\$$fieldnum \"\t\" "
+        db_update_latest_messages $flow &
     done
-    db_get $db | tail -n +2 | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
-} 2> >(logpipe)
+    wait_jobs
 
-db_where() {
-    local id=$1
-    awk -F '\t' "{ if (\$1 == \"$id\") { OFS=\"	\"; \$1=\"\"; print \$0; }}"
-}
+    CURRENT_FLOW=`echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]'`
 
-db_join() {
-    local db=$1
-    local id_field=$2
-    local data_field=$3
-    #### XXX without db_where seems to put out a tab too much or something
-    db_format 1 "db_select $db $id_field $data_field | db_where %s | tr -d '[[:space:]]'"
-}
+    ui_update_buffers
+    ui_redraw
 
-db_format() {
-    local field=$1
-    local prog_template=$2
-    while read line
+
+    while true
     do
-        local orig="`echo "$line" | cut -d '	' -f "$field"`"
-        ##### XXX shell-escape this
-        local prog="`printf "$prog_template" "$orig"`"
-        local new="`eval "$prog"`"
-        echo "$line" | awk -F '\t' "{ OFS=\"	\"; \$$field=\"$new\"; print }"
+        read -n 1 key
+        ui_redraw ## XXX actually, only clear field
+        case "$key" in
+        r )
+            db_update_latest_messages $CURRENT_FLOW
+            ui_redraw
+            ;;
+        c )
+            read -r flow
+            local newflow="`db_select flows joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]'`"
+            if [ -z "$newflow" ]
+            then
+                ui_redraw ### XXX actually, only clear field
+                log INVALID FLOW ###XXX
+                echo INVALID FLOW ###XXX
+            else
+                CURRENT_FLOW=$newflow
+                db_update_latest_messages $CURRENT_FLOW
+                ui_update_buffers
+                ui_redraw
+            fi
+            ;;
+        i )
+            read -r input
+            ### TODO: parse \n as a newline
+            ### TODO: backspace destroys the line - maybe read char by char?
+            echo "$input" | api_post_unthreaded $CURRENT_FLOW
+            db_update_latest_messages $CURRENT_FLOW
+            ui_update_buffers
+            ui_redraw
+            ;;
+        q )
+            exit;
+            ;;
+        * )
+            log INVALID INPUT ###XXX
+            echo INVALID INPUT ###XXX
+            sleep 1
+            ui_redraw
+            ;;
+        esac
     done
+    exit
 }
-
-db_print() {
-    local awkspec=$1
-    awk -F '\t' "{ print $awkspec;}"
-}
-
-db_update_users() {
-    log updating users
-    api_get /organizations/$ORG/users | json_to_db id nick name email | db_store users
-} 2> >(logpipe)
-
-db_update_flows() {
-    log updating flows
-    api_get /flows/all | json_to_db id parameterized_name name description joined | db_store flows
-} 2> >(logpipe)
-
-db_update_private() {
-    log updating private chats
-    api_get /private | json_to_db id name open | db_store private
-} 2> >(logpipe)
-
-db_store_messages() {
-    # ordered by date, newest first
-    local db_name=${1}.messages
-    local in=`cat`
-    local car=`echo "$in" | head -n 1`
-    local cdr=`echo "$in" | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
-
-    log storing `echo "$cdr" | wc -l` new messages "for" ${1}
-
-    local tmp=`mktemp`
-    touch `db $db_name`
-    (echo "$car"; echo "$cdr"; db_get $db_name | tail -n +2) > $tmp
-
-    local car=`cat $tmp | head -n 1`
-    local cdr=`cat $tmp | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
-    (echo "$car"; echo "$cdr") > `db $db_name`
-    rm -f $tmp
-} 2> >(logpipe)
-
-db_update_latest_messages() {
-    local flow_name=$1
-    local since_id=`db_select ${flow_name}.messages id | head -n 1`
-    if [ $since_id ]
-    then
-        log updating messages after $since_id "for" $flow_name
-        api_get "/flows/$ORG/$flow_name/messages?limit=100&since_id=$since_id" | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
-    else
-        log getting last few messages "for" $flow_name
-        api_get /flows/$ORG/$flow_name/messages?limit=100 | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
-    fi
-} 2> >(logpipe)
 
 ### user interface
 
@@ -370,89 +260,196 @@ ui_init() {
     ui_resize
 }
 
-### main
+### local database
 
-#### XXX REORDER
-MAIN() {
-    mkdir -p "$BASEDIR"
-    echo > "$BASEDIR/fdcli.log"
-
-    log hello world
-    api_test_connection
-
-    ui_init
-
-    ui_update_buffers
-    ui_redraw
-
-    #db_update_users &
-    #db_update_flows &
-    #db_update_private &
-    wait_jobs
-
-    ### XXX only update flow buffer, and do so right after db_update_flows, etc.
-    ui_update_buffers
-    ui_redraw
-
-    joined=`db_select flows joined parameterized_name | db_where True`
-    for flow in $joined
-    do
-        echo
-        db_update_latest_messages $flow &
-    done
-    wait_jobs
-
-    CURRENT_FLOW=`echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]'`
-
-    ui_update_buffers
-    ui_redraw
-
-
-    while true
-    do
-        read -n 1 key
-        ui_redraw ## XXX actually, only clear field
-        case "$key" in
-        r )
-            db_update_latest_messages $CURRENT_FLOW
-            ui_redraw
-            ;;
-        c )
-            read -r flow
-            local newflow="`db_select flows joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]'`"
-            if [ -z "$newflow" ]
-            then
-                ui_redraw ### XXX actually, only clear field
-                log INVALID FLOW ###XXX
-                echo INVALID FLOW ###XXX
-            else
-                CURRENT_FLOW=$newflow
-                db_update_latest_messages $CURRENT_FLOW
-                ui_update_buffers
-                ui_redraw
-            fi
-            ;;
-        i )
-            read -r input
-            ### TODO: parse \n as a newline
-            ### TODO: backspace destroys the line - maybe read char by char?
-            echo "$input" | api_post_unthreaded $CURRENT_FLOW
-            db_update_latest_messages $CURRENT_FLOW
-            ui_update_buffers
-            ui_redraw
-            ;;
-        q )
-            exit;
-            ;;
-        * )
-            log INVALID INPUT ###XXX
-            echo INVALID INPUT ###XXX
-            sleep 1
-            ui_redraw
-            ;;
-        esac
-    done
-    exit
+db() {
+    echo $BASEDIR/${1}.db
 }
+
+db_store() {
+    cat > `db $1`
+} 2> >(logpipe)
+
+db_get() {
+    cat `db $1`
+} 2> >(logpipe)
+
+db_select() {
+    local db=$1
+    shift
+    local fieldspec=""
+    for field in "$@"
+    do
+        local fieldnum=`db_get $db | head -n 1 | \
+                    tr '\t' '\n' | fgrep -xn $field | \
+                    cut -d ':' -f 1 | tr -d '\n'`
+        fieldspec+="\$$fieldnum \"\t\" "
+    done
+    db_get $db | tail -n +2 | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
+} 2> >(logpipe)
+
+db_where() {
+    local id=$1
+    awk -F '\t' "{ if (\$1 == \"$id\") { OFS=\"	\"; \$1=\"\"; print \$0; }}"
+}
+
+db_join() {
+    local db=$1
+    local id_field=$2
+    local data_field=$3
+    #### XXX without db_where seems to put out a tab too much or something
+    db_format 1 "db_select $db $id_field $data_field | db_where %s | tr -d '[[:space:]]'"
+}
+
+db_format() {
+    local field=$1
+    local prog_template=$2
+    while read line
+    do
+        local orig="`echo "$line" | cut -d '	' -f "$field"`"
+        ##### XXX shell-escape this
+        local prog="`printf "$prog_template" "$orig"`"
+        local new="`eval "$prog"`"
+        echo "$line" | awk -F '\t' "{ OFS=\"	\"; \$$field=\"$new\"; print }"
+    done
+}
+
+db_print() {
+    local awkspec=$1
+    awk -F '\t' "{ print $awkspec;}"
+}
+
+db_update_users() {
+    log updating users
+    api_get /organizations/$ORG/users | json_to_db id nick name email | db_store users
+} 2> >(logpipe)
+
+db_update_flows() {
+    log updating flows
+    api_get /flows/all | json_to_db id parameterized_name name description joined | db_store flows
+} 2> >(logpipe)
+
+db_update_private() {
+    log updating private chats
+    api_get /private | json_to_db id name open | db_store private
+} 2> >(logpipe)
+
+db_store_messages() {
+    # ordered by date, newest first
+    local db_name=${1}.messages
+    local in=`cat`
+    local car=`echo "$in" | head -n 1`
+    local cdr=`echo "$in" | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
+
+    log storing `echo "$cdr" | wc -l` new messages "for" ${1}
+
+    local tmp=`mktemp`
+    touch `db $db_name`
+    (echo "$car"; echo "$cdr"; db_get $db_name | tail -n +2) > $tmp
+
+    local car=`cat $tmp | head -n 1`
+    local cdr=`cat $tmp | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
+    (echo "$car"; echo "$cdr") > `db $db_name`
+    rm -f $tmp
+} 2> >(logpipe)
+
+db_update_latest_messages() {
+    local flow_name=$1
+    local since_id=`db_select ${flow_name}.messages id | head -n 1`
+    if [ $since_id ]
+    then
+        log updating messages after $since_id "for" $flow_name
+        api_get "/flows/$ORG/$flow_name/messages?limit=100&since_id=$since_id" | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
+    else
+        log getting last few messages "for" $flow_name
+        api_get /flows/$ORG/$flow_name/messages?limit=100 | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
+    fi
+} 2> >(logpipe)
+
+### api
+
+api_get() {
+    local path=$1
+    http $APIURL$path
+} 2> >(logpipe)
+
+api_post_unthreaded() {
+    local flowname=$1
+    local msg="`cat`"
+    local body="{\"event\":\"message\",\"content\":\"$msg\"}"
+    #### XXX switch to form-encoded
+    log POSTING "$body"
+    log POSTING TO "$APIURL/flows/$ORG/$flowname/messages"
+    echo "$body" | http -X POST -H 'Content-Type: application/json' POST -d @- "$APIURL/flows/$ORG/$flowname/messages" | logpipe
+} 2> >(logpipe)
+
+api_test_connection() {
+    log testing connection to flowdock
+    http $APIURL/organizations/$ORG > /dev/null || (
+        echo fdcli: FATAL: Cannot connect to Flowdock
+        echo Please make sure you have your personal API token in $BASEDIR/TOKEN
+        echo and the name of your organization in $BASEDIR/ORG
+        echo
+        echo Get the API token on https://www.flowdock.com/account/tokens
+        echo
+    )
+}
+
+### utilities
+
+wait_jobs() {
+    for job in `jobs -p`
+    do
+        wait $job
+    done
+}
+
+http() {
+    log curl "$@"
+    curl -s --fail -A 'fdcli <github.com/rwos/fdcli>' "$@"
+} 2> >(logpipe)
+
+log() {
+    echo "`date`	$@" >> "$BASEDIR/fdcli.log"
+}
+
+logpipe() {
+    while read line
+    do
+        echo "`date`	STDERR: $line" >> "$BASEDIR/fdcli.log"
+    done
+}
+
+json() {
+    local prog=`echo "$@"`
+    python -c "import json,sys,codecs;u=codecs.getwriter('utf8');sys.stdout=u(sys.stdout);OUT=sys.stdout.write;J=json.load(sys.stdin);$prog"
+} 2> >(logpipe)
+
+json_to_db() {
+    local prog=""
+    for field in "$@"
+    do
+        prog+="OUT('$field' + '\t');"
+    done
+    prog+="OUT('\n'); ["
+    for field in "$@"
+    do
+    prog+="OUT(x.get('$field', False).replace('\\n', '\\\\n').replace('\\t', '\\\\t') if isinstance(x.get('$field', False), basestring) else str(x.get('$field', False))) or OUT('\t') or "
+    done
+    prog+='OUT("\n") for x in J]'
+    json $prog
+} 2> >(logpipe)
+
+chunk() {
+    local len=$1
+    #### XXX hack needed so that fold doesn't remove newlines(???)
+    local in=`cat`
+    if [ `echo "$in" | wc -c` -lt $len ]
+    then
+        echo "$in"
+    else
+        echo "$in" | fold -w $len -s
+    fi
+} 2> >(logpipe)
 
 MAIN
