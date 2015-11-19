@@ -452,4 +452,7 @@ chunk() {
     fi
 } 2> >(logpipe)
 
-MAIN
+if [ "$(basename $0)" != "test" ]
+then
+    MAIN
+fi
