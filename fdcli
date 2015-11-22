@@ -178,10 +178,17 @@ underline=$(tput smul)
 offunderline=$(tput rmul)
 
 ui_render_message() {
-    echo "$1" | sed \
+    local msg=$1
+    echo "$msg" | tr -d '\n' | sed \
         -e "s/https\\?:[^[:space:]]\+/$underline\0$offunderline/g" \
         -e "s/:[^[:space:]]\+:/$special\0$off/g" \
-        -e "s/@[^[:space:]]\+:/$bold\0$off/g"
+        -e "s/@[^[:space:]]\+/$bold\0$off/g"
+        ### XXX use tags in message for name/mentioning substitution
+    local url="$(echo "$msg" | egrep -o 'https?:[^[:space:]]+')"
+    if [ -n "$url" ]
+    then
+        jp2a --width=80 "$url" | sed 's/$/\\n/' | tr -d '\n'
+    fi
 } 2> >(logpipe)
 
 ui_render_thread_id() {
@@ -370,6 +377,7 @@ db_join() {
     db_format 1 "db $db | db_select $id_field $data_field | db_where %s | tr -d '\n'"
 }
 
+##### XXX FIXME: don't supply field value via arg, supply via stdin!
 db_format() {
     local field=$1
     local prog_template=$2
