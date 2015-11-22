@@ -423,7 +423,7 @@ api_post_message() {
     local thread_id=$2
     local msg="$(cat)"
     local body="{\"event\":\"message\",\"content\":\"$msg\"}"
-    #### XXX switch to form-encoded
+    #### XXX switch to form-encoded, make sure the msg doesn't break the enconding
     local url="$APIURL/flows/$ORG/$flow_name/messages"
     if [ -n "$thread_id" ]
     then
