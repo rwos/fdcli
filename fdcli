@@ -124,10 +124,14 @@ ui_buffer_display() {
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
     while read line
     do
-        printf -- "$line" | chunk $w | head -n 1
+        log MSGIN0 $w
+        log MSGIN1 "$line"
+        log MSGIN2 "$(printf -- "$line" | nowrap $w | tr '\n' 'N')"
+        printf -- "$line" | nowrap $w
     done < $(ui_buffer $name) | \
         while read line
         do
+            log MSG "$line"
             if [ $cur_line -lt $(($h - 1)) ]
             then
                 tput cup $(($y + $cur_line)) $x
@@ -167,7 +171,7 @@ ui_buffer_display_messages() {
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
     cat $(ui_buffer $name) | sed 's/\\n/\n/g' | while read line
     do
-        printf -- "$line" | chunk $w
+        printf -- "$line" | wrap $w
         printf "\n"
     done | \
         while read line ### XXX this destroys empty newlines?
@@ -438,16 +442,14 @@ json_to_db() {
     json $prog
 } 2> >(logpipe)
 
-chunk() {
+wrap() {
     local len=$1
-    #### XXX hack needed so that fold doesn't remove newlines(???)
-    local in=$(cat)
-    if [ $(echo "$in" | wc -c) -lt $len ]
-    then
-        echo "$in"
-    else
-        echo "$in" | fold -w $len -s
-    fi
+    fold -s -w $len | sed 's/^ *//' | grep -v '^$' | fmt -w $len
+} 2> >(logpipe)
+
+nowrap() {
+    local len=$1
+    fold -w $len | head -n 1 | sed 's/\n\?$/\n/'
 } 2> >(logpipe)
 
 if [ "$(basename $0)" != "test" ]

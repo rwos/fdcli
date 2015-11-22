@@ -8,7 +8,8 @@ source fdcli
 assert() {
     local expected=$(printf "$1")
     local actual="$(cat)"
-    diff -u <(echo "$expected") <(echo "$actual") | sed 's/\t/<<TAB>>/g'
+    diff -u <(printf -- "$expected") <(printf -- "$actual") | sed 's/\t/<<TAB>>/g' | colordiff || \
+        (printf -- "expected:\n-------------\n$expected\n-------------\n"; false)
 }
 
 def() {
@@ -36,6 +37,24 @@ db users | db_select known id | db_where yes | assert '1\n2\n'
 
 db users | db_select id name | db_format 1 'echo hello' | assert 'hello\tsome one\nhello\tsome one else\n'
 db users | db_select id name | db_format 1 'echo "<<%s>>"' | assert '<<1>>\tsome one\n<<2>>\tsome one else\n'
+
+printf '12' | nowrap 3 | assert '12\n'
+printf '123456789' | nowrap 3 | assert '123\n'
+printf '123456789' | nowrap 5 | assert '12345\n'
+printf '1234\n5678\n9' | nowrap 5 | assert '1234\n'
+printf '1234\n5678\n9' | nowrap 2 | assert '12\n'
+printf '1234\n5678\n9' | nowrap 3 | assert '123\n'
+printf '1234 5678 9' | nowrap 5 | assert '1234 \n'
+printf '1234 5678 9' | nowrap 4 | assert '1234\n'
+
+printf '12' | wrap 3 | assert '12\n'
+printf '123456789' | wrap 3 | assert '123\n456\n789\n'
+printf '123456789' | wrap 5 | assert '12345\n6789\n'
+printf '1234\n5678\n9' | wrap 5 | assert '1234\n5678\n9'
+printf '1234\n5678\n9' | wrap 2 | assert '12\n34\n56\n78\n9'
+printf '1234\n5678\n9' | wrap 3 | assert '123\n4\n567\n8\n9'
+printf '1234 5678 9' | wrap 5 | assert '1234\n5678\n9'
+printf '1234 5678 9' | wrap 4 | assert '1234\n5678\n9'
 
 # TODO
 # test db_join
