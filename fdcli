@@ -2,8 +2,8 @@
 
 BASEDIR="$HOME/.config/fdcli"
 
-TOKEN=`cat $BASEDIR/TOKEN || echo`
-ORG=`cat $BASEDIR/ORG || echo`
+TOKEN=$(cat $BASEDIR/TOKEN || echo)
+ORG=$(cat $BASEDIR/ORG || echo)
 
 APIURL=https://$TOKEN@api.flowdock.com
 
@@ -28,7 +28,7 @@ MAIN() {
     ui_update_buffers
     ui_redraw
 
-    joined=`db flows | db_select joined parameterized_name | db_where True`
+    joined=$(db flows | db_select joined parameterized_name | db_where True)
     for flow in $joined
     do
         echo
@@ -36,7 +36,7 @@ MAIN() {
     done
     wait_jobs
 
-    CURRENT_FLOW=`echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]'`
+    CURRENT_FLOW=$(echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]')
 
     ui_update_buffers
     ui_redraw
@@ -53,7 +53,7 @@ MAIN() {
             ;;
         c )
             read -r flow
-            local newflow="`db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]'`"
+            local newflow="$(db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]')"
             if [ -z "$newflow" ]
             then
                 ui_redraw ### XXX actually, only clear field
@@ -91,7 +91,7 @@ MAIN() {
 
 ### user interface
 
-UIDIR=`mktemp -d`
+UIDIR=$(mktemp -d)
 HMARK="┄"
 VMARK="║"
 
@@ -106,8 +106,8 @@ ui_buffer() {
 }
 
 ui_buffer_store() {
-    log ui buffer store `ui_buffer $1`
-    cat > `ui_buffer $1`
+    log ui buffer store $(ui_buffer $1)
+    cat > $(ui_buffer $1)
 } 2> >(logpipe)
 
 ui_buffer_display() {
@@ -120,12 +120,12 @@ ui_buffer_display() {
     local cur_line=0
 
     log display $name x=$x y=$y w=$w h=$h
-    touch `ui_buffer $name`
+    touch $(ui_buffer $name)
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
     while read line
     do
         printf -- "$line" | chunk $w | head -n 1
-    done < `ui_buffer $name` | \
+    done < $(ui_buffer $name) | \
         while read line
         do
             if [ $cur_line -lt $(($h - 1)) ]
@@ -137,13 +137,13 @@ ui_buffer_display() {
         done
 } 2> >(logpipe)
 
-bold=`tput bold`
-special=`tput setab 5`
-tput_name=`tput setab 3; tput setaf 0`
-off=`tput sgr0`
+bold=$(tput bold)
+special=$(tput setab 5)
+tput_name=$(tput setab 3; tput setaf 0)
+off=$(tput sgr0)
 
-underline=`tput smul`
-offunderline=`tput rmul`
+underline=$(tput smul)
+offunderline=$(tput rmul)
 
 ui_render_message() {
     echo "$1" | sed \
@@ -163,9 +163,9 @@ ui_buffer_display_messages() {
     local cur_line=0
 
     log display $name x=$x y=$y w=$w h=$h
-    touch `ui_buffer $name`
+    touch $(ui_buffer $name)
     ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
-    cat `ui_buffer $name` | sed 's/\\n/\n/g' | while read line
+    cat $(ui_buffer $name) | sed 's/\\n/\n/g' | while read line
     do
         printf -- "$line" | chunk $w
         printf "\n"
@@ -188,7 +188,7 @@ ui_buffer_vmark() {
     local h=$3
 
     tput setaf 2
-    for l in `seq $h`
+    for l in $(seq $h)
     do
         tput cup $(($y + $l - 1)) $x
         printf "$VMARK"
@@ -202,7 +202,7 @@ ui_buffer_hmark() {
     local w=$3
 
     tput setaf 2
-    for c in `seq $w`
+    for c in $(seq $w)
     do
         tput cup $y $(($x + $c -1))
         printf "$HMARK"
@@ -211,8 +211,8 @@ ui_buffer_hmark() {
 } 2> >(logpipe)
 
 ui_resize() {
-    UIW=`tput cols`
-    UIH=`tput lines`
+    UIW=$(tput cols)
+    UIH=$(tput lines)
     log resize UIW=$UIW UIH=$UIH
     ui_redraw
 }
@@ -263,7 +263,7 @@ ui_init() {
 ### local database
 
 db() {
-    cat `db_name $1`
+    cat $(db_name $1)
 } 2> >(logpipe)
 
 db_name() {
@@ -271,7 +271,7 @@ db_name() {
 }
 
 db_store() {
-    cat > `db_name $1`
+    cat > $(db_name $1)
 } 2> >(logpipe)
 
 db_select() {
@@ -279,9 +279,9 @@ db_select() {
     local fieldspec=""
     for field in "$@"
     do
-        local fieldnum=`echo "$header" | \
+        local fieldnum=$(echo "$header" | \
                     tr '\t' '\n' | fgrep -xn $field | \
-                    cut -d ':' -f 1 | tr -d '\n'`
+                    cut -d ':' -f 1 | tr -d '\n')
         fieldspec+="\$$fieldnum \"\t\" "
     done
     cat | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
@@ -305,10 +305,10 @@ db_format() {
     local prog_template=$2
     while read line
     do
-        local orig="`echo "$line" | cut -d '	' -f "$field"`"
+        local orig="$(echo "$line" | cut -d '	' -f "$field")"
         ##### XXX shell-escape this
-        local prog="`printf "$prog_template" "$orig"`"
-        local new="`eval "$prog"`"
+        local prog="$(printf "$prog_template" "$orig")"
+        local new="$(eval "$prog")"
         echo "$line" | awk -F '\t' "{ OFS=\"	\"; \$$field=\"$new\"; print }"
     done
 }
@@ -336,25 +336,25 @@ db_update_private() {
 db_store_messages() {
     # ordered by date, newest first
     local db_name=${1}.messages
-    local in=`cat`
-    local car=`echo "$in" | head -n 1`
-    local cdr=`echo "$in" | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
+    local in=$(cat)
+    local car=$(echo "$in" | head -n 1)
+    local cdr=$(echo "$in" | tail -n +2 | sort -r -n -t "	" -k 2 | uniq)
 
-    log storing `echo "$cdr" | wc -l` new messages "for" ${1}
+    log storing $(echo "$cdr" | wc -l) new messages "for" ${1}
 
-    local tmp=`mktemp`
-    touch `db_name $db_name`
-    (echo "$car"; echo "$cdr"; db_get $db_name | tail -n +2) > $tmp
+    local tmp=$(mktemp)
+    touch $(db_name $db_name)
+    (echo "$car"; echo "$cdr"; db $db_name | tail -n +2) > $tmp
 
-    local car=`cat $tmp | head -n 1`
-    local cdr=`cat $tmp | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
-    (echo "$car"; echo "$cdr") > `db_name $db_name`
+    local car=$(cat $tmp | head -n 1)
+    local cdr=$(cat $tmp | tail -n +2 | sort -r -n -t "	" -k 2 | uniq)
+    (echo "$car"; echo "$cdr") > $(db_name $db_name)
     rm -f $tmp
 } 2> >(logpipe)
 
 db_update_latest_messages() {
     local flow_name=$1
-    local since_id=`db "${flow_name}.messages" | db_select id | head -n 1`
+    local since_id=$(db "${flow_name}.messages" | db_select id | head -n 1)
     if [ $since_id ]
     then
         log updating messages after $since_id "for" $flow_name
@@ -374,7 +374,7 @@ api_get() {
 
 api_post_unthreaded() {
     local flowname=$1
-    local msg="`cat`"
+    local msg="$(cat)"
     local body="{\"event\":\"message\",\"content\":\"$msg\"}"
     #### XXX switch to form-encoded
     log POSTING "$body"
@@ -397,7 +397,7 @@ api_test_connection() {
 ### utilities
 
 wait_jobs() {
-    for job in `jobs -p`
+    for job in $(jobs -p)
     do
         wait $job
     done
@@ -409,18 +409,18 @@ http() {
 } 2> >(logpipe)
 
 log() {
-    echo "`date`	$@" >> "$BASEDIR/fdcli.log"
+    echo "$(date)	$@" >> "$BASEDIR/fdcli.log"
 }
 
 logpipe() {
     while read line
     do
-        echo "`date`	STDERR: $line" >> "$BASEDIR/fdcli.log"
+        echo "$(date)	STDERR: $line" >> "$BASEDIR/fdcli.log"
     done
 }
 
 json() {
-    local prog=`echo "$@"`
+    local prog=$(echo "$@")
     python -c "import json,sys,codecs;u=codecs.getwriter('utf8');sys.stdout=u(sys.stdout);OUT=sys.stdout.write;J=json.load(sys.stdin);$prog"
 } 2> >(logpipe)
 
@@ -442,8 +442,8 @@ json_to_db() {
 chunk() {
     local len=$1
     #### XXX hack needed so that fold doesn't remove newlines(???)
-    local in=`cat`
-    if [ `echo "$in" | wc -c` -lt $len ]
+    local in=$(cat)
+    if [ $(echo "$in" | wc -c) -lt $len ]
     then
         echo "$in"
     else
