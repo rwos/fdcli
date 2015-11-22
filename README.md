@@ -36,7 +36,7 @@ Should look something like this then:
 
 # Files
 
-* it saves all stuff to `~/.config/fdcli`, most of it is in tab-seperated
+* it saves all stuff to `~/.config/fdcli`, most of it is in tab-separated
   format with a header line
 * there's a log at `~/.config/fdcli/fdcli.log` (cleared on every run)
 
