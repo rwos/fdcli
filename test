@@ -20,20 +20,26 @@ db() {
 }
 
 def users <<'END'
-id	name	nick
-1	some one	somenick
-2	some one else	elsenick
+id	name	nick	known
+1	some one	somenick	yes
+2	some one else	elsenick	yes
 END
 
 db users | db_select id | assert '1\n2\n'
 db users | db_select id name | assert '1\tsome one\n2\tsome one else\n'
+db users | db_select id name nick | assert '1\tsome one\tsomenick\n2\tsome one else\telsenick\n'
+db users | db_select name id | assert 'some one\t1\nsome one else\t2\n'
 
-echo ALL GOOD
-### TODO
-# test db_select
-# test db_where
-# test db_format
+db users | db_select id name | db_where 1 | assert 'some one\n'
+db users | db_select id name | db_where 2 | assert 'some one else\n'
+db users | db_select known id | db_where yes | assert '1\n2\n'
+
+db users | db_select id name | db_format 1 'echo hello' | assert 'hello\tsome one\nhello\tsome one else\n'
+db users | db_select id name | db_format 1 'echo "<<%s>>"' | assert '<<1>>\tsome one\n<<2>>\tsome one else\n'
+
+# TODO
 # test db_join
 # test db_print (SHOULD ALSO DO REPLACEMENT OF \n and \t)
-
 # test json_to_db (should replace \t and \n)
+
+echo ALL GOOD

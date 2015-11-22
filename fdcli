@@ -289,15 +289,14 @@ db_select() {
 
 db_where() {
     local id=$1
-    awk -F '\t' "{ if (\$1 == \"$id\") { OFS=\"	\"; \$1=\"\"; print \$0; }}"
+    awk -F '\t' "{ if (\$1 == \"$id\") { OFS=\"	\"; \$1=\"\"; print \$0; }}" | sed 's/^\t//'
 }
 
 db_join() {
     local db=$1
     local id_field=$2
     local data_field=$3
-    #### XXX without db_where seems to put out a tab too much or something
-    db_format 1 "db $db | db_select $id_field $data_field | db_where %s | tr -d '[[:space:]]'"
+    db_format 1 "db $db | db_select $id_field $data_field | db_where %s | tr -d '\n'"
 }
 
 db_format() {
