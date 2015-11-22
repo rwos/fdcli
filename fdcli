@@ -11,8 +11,11 @@ MAIN() {
     mkdir -p "$BASEDIR"
     echo > "$BASEDIR/fdcli.log"
 
-    log hello world
     # XXX TEST IF ALL PROGS ARE THERE
+
+    echo hello
+    log hello world
+    echo testing connection to flowdock
     api_test_connection
 
     ui_init
@@ -20,10 +23,10 @@ MAIN() {
     ui_update_buffers
     ui_redraw
 
-    #db_update_users &
-    #db_update_flows &
-    #db_update_private &
-    #wait_jobs
+    db_update_users &
+    db_update_flows &
+    db_update_private &
+    wait_jobs
 
     ### XXX only update flow buffer, and do so right after db_update_flows, etc.
     ui_update_buffers
@@ -33,7 +36,7 @@ MAIN() {
     for flow in $joined
     do
         echo
-    #    db_update_latest_messages $flow &
+        db_update_latest_messages $flow &
     done
     wait_jobs
 
@@ -46,7 +49,7 @@ MAIN() {
 
     while true
     do
-        read -n 1 key
+        read -p '[r]eload | [c]hange flow | change [t]hread | [i] post message | [q]uit ' -n 1 key
         ui_redraw ## XXX actually, only clear field
         case "$key" in
         r )
@@ -54,7 +57,7 @@ MAIN() {
             ui_redraw
             ;;
         c )
-            read -r flow
+            read -p 'flow handle: ' -r flow
             local newflow="$(db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]')"
             if [ -z "$newflow" ]
             then
@@ -70,21 +73,22 @@ MAIN() {
                 ui_redraw
             fi
             ;;
-        t ) read -r thread_handle
+        t ) read -p 'thread handle: ' -r thread_handle
             if [ -z "$thread_handle" ]
             then
                 CURRENT_THREAD=""
             else
                 CURRENT_THREAD="$(db_find_thread "$CURRENT_FLOW" "$thread_handle")"
             fi
-            echo "$CURRENT_THREAD";
-            sleep 2;
+            ui_redraw
+            echo "CURRENT THREAD: $CURRENT_THREAD";
+            sleep 3;
             ui_redraw
             ;;
         i )
             ### TODO: parse \n as a newline
             ### TODO: backspace destroys the line - maybe read char by char?
-            read -r input
+            read -p 'message: ' -r input
             echo "$input" | api_post_message "$CURRENT_FLOW" "$CURRENT_THREAD"
             db_update_latest_messages $CURRENT_FLOW
             ui_update_buffers
@@ -95,8 +99,8 @@ MAIN() {
             ;;
         * )
             log INVALID INPUT ###XXX
-            echo INVALID INPUT ###XXX
-            sleep 2
+            echo INVALID INPUT
+            sleep 3
             ui_redraw
             ;;
         esac
@@ -125,6 +129,18 @@ ui_buffer_store() {
     cat > $(ui_buffer $1)
 } 2> >(logpipe)
 
+ui_clear_rect() {
+    local x=$1
+    local y=$2
+    local w=$3
+    local h=$4
+    for l in $(seq $h)
+    do
+        tput cup $(($y + $l - 1)) $x
+        printf "%${w}.${w}s" ""
+    done
+} 2> >(logpipe)
+
 ui_buffer_display() {
     local name=$1
     local x=$2
@@ -135,8 +151,8 @@ ui_buffer_display() {
     local cur_line=0
 
     log display $name x=$x y=$y w=$w h=$h
-    touch $(ui_buffer $name)
-    ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
+    ui_clear_rect $x $y $w $h
+    touch $(ui_buffer $name) ### XXX
     while read line
     do
         printf -- "$line" | nowrap $w
@@ -190,8 +206,8 @@ ui_buffer_display_messages() {
     local cur_line=0
 
     log display $name x=$x y=$y w=$w h=$h
-    touch $(ui_buffer $name)
-    ### XXX TODO: clear rectangle of area, remove clear in redraw => redraw single buffers
+    ui_clear_rect $x $y $w $h
+    touch $(ui_buffer $name) ### XXX
     cat $(ui_buffer $name) | sed 's/\\n/\n/g' | while read line
     do
         printf -- "$line" | wrap $w
@@ -217,7 +233,7 @@ ui_buffer_vmark() {
     for l in $(seq $h)
     do
         tput cup $(($y + $l - 1)) $x
-        printf "$VMARK"
+        printf "$VMARK "
     done
     tput sgr0
 } 2> >(logpipe)
@@ -248,10 +264,9 @@ ui_redraw() {
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
     log redraw fw=$fw fh=$fh
-    tput clear
     ui_buffer_display flows 0 0 $fw $fh
     ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh))
-    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 2
+    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 4
     ui_buffer_display_messages $(($fw + 2)) 4 $(($UIW - $fw - 2)) $((UIH - 4))
     ui_buffer_vmark $fw 0 $UIH
     ui_buffer_hmark 0 $fh $fw
@@ -259,10 +274,9 @@ ui_redraw() {
     tput cup 1 $(($fw + 2))
 } 2> >(logpipe)
 
-CURRENT_FLOW=devlounge ###XXX move
+CURRENT_FLOW=devlounge ###XXX move into main, as local
 
 ui_update_buffers() {
-    ### XXX XXX TODO: selection + callback trigger for each buffer
     db flows | db_select joined name parameterized_name | db_where True | sort | \
         db_format 1 'printf "${bold}%20.20s${off}"' | \
         ui_buffer_store flows &
@@ -272,7 +286,7 @@ ui_update_buffers() {
         db_join users id nick | \
         db_format 2 'ui_render_thread_id "%s"' | \
         db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
-        db_format 1 'printf "${bold}%15.15s${off}" | sed "s/ /./g"' | \
+        db_format 1 'printf "${bold}%15.15s${off}"' | \
         db_format 4 'ui_render_message "%s"' | \
         db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages &
     wait_jobs
