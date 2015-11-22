@@ -1,3 +1,22 @@
 #!/bin/bash
 
 source fdcli
+
+assert() {
+    local expected=$1
+    local actual="`cat`"
+
+    diff -u <(echo "$expected") <(echo "$actual")
+}
+
+users="`printf "%s\n%s" "1\tsome one" "2\tsome one else"`"
+messages="`printf "%s\n%s" "1\t1\tfrom some one" "1\t1\talso from some one"`" 
+
+### TODO
+# test db_select
+# test db_where
+# test db_format
+# test db_join
+# test db_print (SHOULD ALSO DO REPLACEMENT OF \n and \t)
+
+# test json_to_db (should replace \t and \n)

@@ -28,7 +28,7 @@ MAIN() {
     ui_update_buffers
     ui_redraw
 
-    joined=`db_select flows joined parameterized_name | db_where True`
+    joined=`db flows | db_select joined parameterized_name | db_where True`
     for flow in $joined
     do
         echo
@@ -53,7 +53,7 @@ MAIN() {
             ;;
         c )
             read -r flow
-            local newflow="`db_select flows joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]'`"
+            local newflow="`db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]'`"
             if [ -z "$newflow" ]
             then
                 ui_redraw ### XXX actually, only clear field
@@ -237,13 +237,13 @@ CURRENT_FLOW=devlounge ###XXX move
 
 ui_update_buffers() {
     ### XXX XXX TODO: selection + callback trigger for each buffer
-    db_select flows joined name parameterized_name | db_where True | sort | \
+    db flows | db_select joined name parameterized_name | db_where True | sort | \
         db_format 1 'printf "${bold}%10.10s${off}"' | \
         ui_buffer_store flows &
-    db_select private open name | db_where True | sort | ui_buffer_store private &
+    db private | db_select open name | db_where True | sort | ui_buffer_store private &
     #### XXX the grep is only needed because db_where is borked
-    db_select flows parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | grep -v '^$' | ui_buffer_store flowtitle &
-    db_select "${CURRENT_FLOW}.messages" event user sent content | db_where message | head -n 50 | \
+    db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | grep -v '^$' | ui_buffer_store flowtitle &
+    db "${CURRENT_FLOW}.messages" | db_select event user sent content | db_where message | head -n 50 | \
         db_join users id nick | \
         db_format 2 'date -R -d "@$((%s / 1000))" | cut -d " " -f 2,3,4,5' | \
         db_format 1 'printf "${bold}%10.10s${off}"' | \
@@ -263,29 +263,28 @@ ui_init() {
 ### local database
 
 db() {
+    cat `db_name $1`
+} 2> >(logpipe)
+
+db_name() {
     echo $BASEDIR/${1}.db
 }
 
 db_store() {
-    cat > `db $1`
-} 2> >(logpipe)
-
-db_get() {
-    cat `db $1`
+    cat > `db_name $1`
 } 2> >(logpipe)
 
 db_select() {
-    local db=$1
-    shift
+    read header
     local fieldspec=""
     for field in "$@"
     do
-        local fieldnum=`db_get $db | head -n 1 | \
+        local fieldnum=`echo "$header" | \
                     tr '\t' '\n' | fgrep -xn $field | \
                     cut -d ':' -f 1 | tr -d '\n'`
         fieldspec+="\$$fieldnum \"\t\" "
     done
-    db_get $db | tail -n +2 | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
+    cat | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
 } 2> >(logpipe)
 
 db_where() {
@@ -298,7 +297,7 @@ db_join() {
     local id_field=$2
     local data_field=$3
     #### XXX without db_where seems to put out a tab too much or something
-    db_format 1 "db_select $db $id_field $data_field | db_where %s | tr -d '[[:space:]]'"
+    db_format 1 "db $db | db_select $id_field $data_field | db_where %s | tr -d '[[:space:]]'"
 }
 
 db_format() {
@@ -344,18 +343,18 @@ db_store_messages() {
     log storing `echo "$cdr" | wc -l` new messages "for" ${1}
 
     local tmp=`mktemp`
-    touch `db $db_name`
+    touch `db_name $db_name`
     (echo "$car"; echo "$cdr"; db_get $db_name | tail -n +2) > $tmp
 
     local car=`cat $tmp | head -n 1`
     local cdr=`cat $tmp | tail -n +2 | sort -r -n -t "	" -k 2 | uniq`
-    (echo "$car"; echo "$cdr") > `db $db_name`
+    (echo "$car"; echo "$cdr") > `db_name $db_name`
     rm -f $tmp
 } 2> >(logpipe)
 
 db_update_latest_messages() {
     local flow_name=$1
-    local since_id=`db_select ${flow_name}.messages id | head -n 1`
+    local since_id=`db "${flow_name}.messages" | db_select id | head -n 1`
     if [ $since_id ]
     then
         log updating messages after $since_id "for" $flow_name
