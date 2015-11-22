@@ -256,7 +256,10 @@ ui_resize() {
     UIW=$(tput cols)
     UIH=$(tput lines)
     log resize UIW=$UIW UIH=$UIH
-    ui_redraw
+    ### XXX all the other stuff
+    ui_redraw main
+    ui_redraw flows
+    ui_redraw private
 }
 
 ui_redraw() {
