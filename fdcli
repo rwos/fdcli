@@ -7,6 +7,8 @@ ORG=$(cat $BASEDIR/ORG || echo)
 
 APIURL=https://$TOKEN@api.flowdock.com
 
+CURRENT_FLOW="" ###XXX move into main, as local
+
 MAIN() {
     mkdir -p "$BASEDIR"
     echo > "$BASEDIR/fdcli.log"
@@ -274,21 +276,22 @@ ui_redraw() {
     tput cup 1 $(($fw + 2))
 } 2> >(logpipe)
 
-CURRENT_FLOW=devlounge ###XXX move into main, as local
-
 ui_update_buffers() {
     db flows | db_select joined name parameterized_name | db_where True | sort | \
         db_format 1 'printf "${bold}%20.20s${off}"' | \
         ui_buffer_store flows &
     db private | db_select open name | db_where True | sort | ui_buffer_store private &
-    db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | ui_buffer_store flowtitle &
-    db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
-        db_join users id nick | \
-        db_format 2 'ui_render_thread_id "%s"' | \
-        db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
-        db_format 1 'printf "${bold}%15.15s${off}"' | \
-        db_format 4 'ui_render_message "%s"' | \
-        db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages &
+    if [ -n "$CURRENT_FLOW" ]
+    then
+        db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | ui_buffer_store flowtitle &
+        db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
+            db_join users id nick | \
+            db_format 2 'ui_render_thread_id "%s"' | \
+            db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
+            db_format 1 'printf "${bold}%15.15s${off}"' | \
+            db_format 4 'ui_render_message "%s"' | \
+            db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages &
+    fi
     wait_jobs
 } 2> >(logpipe)
 
