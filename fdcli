@@ -284,7 +284,7 @@ db_select() {
                     cut -d ':' -f 1 | tr -d '\n')
         fieldspec+="\$$fieldnum \"\t\" "
     done
-    cat | awk -F '\t' "{ print $fieldspec ;}" | head -c -1
+    cat | awk -F '\t' "{ print $fieldspec ;}" | sed 's/\t$//'
 } 2> >(logpipe)
 
 db_where() {

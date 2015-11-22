@@ -1,17 +1,34 @@
 #!/bin/bash
 
+set -o errexit
+set -o pipefail
+
 source fdcli
 
 assert() {
-    local expected=$1
-    local actual="`cat`"
-
-    diff -u <(echo "$expected") <(echo "$actual")
+    local expected=$(printf "$1")
+    local actual="$(cat)"
+    diff -u <(echo "$expected") <(echo "$actual") | sed 's/\t/<<TAB>>/g'
 }
 
-users="`printf "%s\n%s" "1\tsome one" "2\tsome one else"`"
-messages="`printf "%s\n%s" "1\t1\tfrom some one" "1\t1\talso from some one"`" 
+def() {
+    IFS='\n' read -r -d '' ${1} || true;
+}
 
+db() {
+    printf -- "${!1}"
+}
+
+def users <<'END'
+id	name	nick
+1	some one	somenick
+2	some one else	elsenick
+END
+
+db users | db_select id | assert '1\n2\n'
+db users | db_select id name | assert '1\tsome one\n2\tsome one else\n'
+
+echo ALL GOOD
 ### TODO
 # test db_select
 # test db_where
