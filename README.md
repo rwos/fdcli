@@ -13,8 +13,6 @@ Work in progress.
 A visual command-line client for [Flowdock](https://www.flowdock.com) with
 vi/mutt like key bindings.
 
-![screenshot](screenshot.png)
-
 # Install
 
 * `cp fdcli /bin`
