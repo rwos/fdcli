@@ -22,36 +22,37 @@ MAIN() {
 
     ui_init
 
-    ui_redraw
-
-    db_update users
-    db_update flows && ui_update flows &
-    db_update private && ui_update private &
-    ### XXX TODO only redraw single buffers
-    ui_redraw
-
-    joined=$(db flows | db_select joined parameterized_name | db_where True)
-    for flow in $joined
-    do
-        echo
-        db_update_latest_messages $flow &
-    done
+    db_update users &
+    db_update flows &
     wait_jobs
 
+    ui_update flows && ui_redraw flows &
+    db_update private && ui_update private && ui_redraw private &
+
+    ### XXX TODO: 1) make current flow persist
+    ### XXX TODO:    - once that is done, we also don't need to wait for the flow list any more
+    joined=$(db flows | db_select joined parameterized_name | db_where True)
     CURRENT_FLOW=$(echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]')
     CURRENT_THREAD=""
 
-    ui_update main
-    ui_redraw
+    for flow in $joined
+    do
+        if [ "$flow" == "$CURRENT_FLOW" ]
+        then
+            db_update_latest_messages $flow && ui_update main && ui_redraw main
+        else
+            db_update_latest_messages $flow &
+        fi
+    done
 
     while true
     do
         read -p '[r]eload | [c]hange flow | change [t]hread | [i] post message | [q]uit ' -n 1 key
-        ui_redraw ## XXX actually, only clear field
+        ui_redraw main ## XXX actually, only clear field
         case "$key" in
         r )
             db_update_latest_messages $CURRENT_FLOW
-            ui_redraw
+            ui_redraw main
             ;;
         c )
             read -p 'flow handle: ' -r flow
@@ -59,16 +60,18 @@ MAIN() {
             local newflow="$(db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]')"
             if [ -z "$newflow" ]
             then
-                ui_redraw ### XXX actually, only clear field
+                ui_redraw main ### XXX actually, only clear field
                 log INVALID FLOW ###XXX
                 echo INVALID FLOW ###XXX
             else
                 CURRENT_FLOW=$newflow
                 CURRENT_THREAD=""
                 ### XXX XXX XXX EVERYWHERE: quote vars
+                ui_update main
+                ui_redraw main
                 db_update_latest_messages $CURRENT_FLOW
                 ui_update main
-                ui_redraw
+                ui_redraw main
             fi
             ;;
         t ) read -p 'thread handle: ' -r thread_handle
@@ -78,10 +81,10 @@ MAIN() {
             else
                 CURRENT_THREAD="$(db_find_thread "$CURRENT_FLOW" "$thread_handle")"
             fi
-            ui_redraw
+            ui_redraw main
             echo "CURRENT THREAD: $CURRENT_THREAD";
             sleep 3;
-            ui_redraw
+            ui_redraw main
             ;;
         i )
             ### TODO: parse \n as a newline
@@ -90,7 +93,7 @@ MAIN() {
             echo "$input" | api_post_message "$CURRENT_FLOW" "$CURRENT_THREAD"
             db_update_latest_messages $CURRENT_FLOW
             ui_update main
-            ui_redraw
+            ui_redraw main
             ;;
         q )
             exit;
@@ -99,7 +102,7 @@ MAIN() {
             log INVALID INPUT ###XXX
             echo INVALID INPUT
             sleep 3
-            ui_redraw
+            ui_redraw main
             ;;
         esac
     done
@@ -257,14 +260,27 @@ ui_resize() {
 }
 
 ui_redraw() {
-#### XXX TODO: hide cursor, but only here
+    #### XXX TODO: hide cursor, but only here
+    local buffer=$1
     local fw=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIW/100)*$LAYOUT_FLOWS_W"))
     local fh=$(LANG=C printf "%.0f" $(bc <<< "scale=5; ($UIH/100)*$LAYOUT_FLOWS_H"))
-    log redraw fw=$fw fh=$fh
-    ui_buffer_display flows 0 0 $fw $fh
-    ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh))
-    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 4 ## XXX actually only two high (rest is seperator + input)
-    ui_buffer_display_messages $(($fw + 2)) 4 $(($UIW - $fw - 2)) $((UIH - 4))
+    log "ui_redraw $buffer fw=$fw fh=$fh"
+    case "$buffer" in
+    flows )
+        ui_buffer_display flows 0 0 $fw $fh
+        ;;
+    private )
+        ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh))
+        ;;
+    main )
+        ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 4 ## XXX actually only two high (rest is seperator + input)
+        ui_buffer_display_messages $(($fw + 2)) 4 $(($UIW - $fw - 2)) $((UIH - 4))
+        ;;
+    * )
+        log "error: unknown ui_redraw for $buffer"
+        ;;
+    esac
+    #### XXX shouldn't be needed every time - find an owner for these
     ui_buffer_vmark $fw 0 $UIH
     ui_buffer_hmark 0 $fh $fw
     # go back to input field
