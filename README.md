@@ -34,6 +34,12 @@ Should look something like this then:
 
 * `fdcli`, keys are indicated at the prompt at the top
 
+# Files
+
+* it saves all stuff to `~/.config/fdcli`, most of it is in tab-seperated
+  format with a header line
+* there's a log at `~/.config/fdcli/fdcli.log` (cleared on every run)
+
 # Requirements
 
 All of this is probably already there.
