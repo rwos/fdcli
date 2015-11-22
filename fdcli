@@ -213,7 +213,6 @@ ui_buffer_display_messages() {
     cat $(ui_buffer $name) | sed 's/\\n/\n/g' | while read line
     do
         printf -- "$line" | wrap $w
-        printf "\n"
     done | \
         while read line
         do
@@ -268,12 +267,12 @@ ui_redraw() {
     log redraw fw=$fw fh=$fh
     ui_buffer_display flows 0 0 $fw $fh
     ui_buffer_display private 0 $(($fh + 1)) $fw $(($UIH - $fh))
-    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 4
+    ui_buffer_display flowtitle $(($fw + 2)) 0 $(($UIW - $fw - 2)) 4 ## XXX actually only two high (rest is seperator + input)
     ui_buffer_display_messages $(($fw + 2)) 4 $(($UIW - $fw - 2)) $((UIH - 4))
     ui_buffer_vmark $fw 0 $UIH
     ui_buffer_hmark 0 $fh $fw
     # go back to input field
-    tput cup 1 $(($fw + 2))
+    tput cup 2 $(($fw + 2))
 } 2> >(logpipe)
 
 ui_update_buffers() {
@@ -283,7 +282,7 @@ ui_update_buffers() {
     db private | db_select open name | db_where True | sort | ui_buffer_store private &
     if [ -n "$CURRENT_FLOW" ]
     then
-        db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | ui_buffer_store flowtitle &
+        db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | ui_buffer_store flowtitle &
         db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
             db_join users id nick | \
             db_format 2 'ui_render_thread_id "%s"' | \
