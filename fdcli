@@ -22,16 +22,12 @@ MAIN() {
 
     ui_init
 
-    ui_update_buffers
     ui_redraw
 
-    db_update_users &
-    db_update_flows &
-    db_update_private &
-    wait_jobs
-
-    ### XXX only update flow buffer, and do so right after db_update_flows, etc.
-    ui_update_buffers
+    db_update users
+    db_update flows && ui_update flows &
+    db_update private && ui_update private &
+    ### XXX TODO only redraw single buffers
     ui_redraw
 
     joined=$(db flows | db_select joined parameterized_name | db_where True)
@@ -45,9 +41,8 @@ MAIN() {
     CURRENT_FLOW=$(echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]')
     CURRENT_THREAD=""
 
-    ui_update_buffers
+    ui_update main
     ui_redraw
-
 
     while true
     do
@@ -60,6 +55,7 @@ MAIN() {
             ;;
         c )
             read -p 'flow handle: ' -r flow
+            ##### XXX make db_find_flow
             local newflow="$(db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]')"
             if [ -z "$newflow" ]
             then
@@ -71,7 +67,7 @@ MAIN() {
                 CURRENT_THREAD=""
                 ### XXX XXX XXX EVERYWHERE: quote vars
                 db_update_latest_messages $CURRENT_FLOW
-                ui_update_buffers
+                ui_update main
                 ui_redraw
             fi
             ;;
@@ -93,7 +89,7 @@ MAIN() {
             read -p 'message: ' -r input
             echo "$input" | api_post_message "$CURRENT_FLOW" "$CURRENT_THREAD"
             db_update_latest_messages $CURRENT_FLOW
-            ui_update_buffers
+            ui_update main
             ui_redraw
             ;;
         q )
@@ -275,23 +271,37 @@ ui_redraw() {
     tput cup 2 $(($fw + 2))
 } 2> >(logpipe)
 
-ui_update_buffers() {
-    db flows | db_select joined name parameterized_name | db_where True | sort | \
-        db_format 1 'printf "${bold}%20.20s${off}"' | \
-        ui_buffer_store flows &
-    db private | db_select open name | db_where True | sort | ui_buffer_store private &
-    if [ -n "$CURRENT_FLOW" ]
-    then
-        db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | ui_buffer_store flowtitle &
-        db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
-            db_join users id nick | \
-            db_format 2 'ui_render_thread_id "%s"' | \
-            db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
-            db_format 1 'printf "${bold}%15.15s${off}"' | \
-            db_format 4 'ui_render_message "%s"' | \
-            db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages &
-    fi
-    wait_jobs
+ui_update() {
+    local buffer=$1
+    log "ui_update $buffer"
+    case "$buffer" in
+    flows )
+        db flows | db_select joined name parameterized_name | db_where True | sort | \
+            db_format 1 'printf "${bold}%20.20s${off}"' | \
+            ui_buffer_store flows
+        ;;
+    private )
+        db private | db_select open name | db_where True | sort | ui_buffer_store private
+        ;;
+    main )
+        ### TODO: give current flow as param (?)
+        if [ -n "$CURRENT_FLOW" ]
+        then
+            log "ui_update $buffer - with $CURRENT_FLOW"
+            db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | ui_buffer_store flowtitle
+            db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
+                db_join users id nick | \
+                db_format 2 'ui_render_thread_id "%s"' | \
+                db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
+                db_format 1 'printf "${bold}%15.15s${off}"' | \
+                db_format 4 'ui_render_message "%s"' | \
+                db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages
+        fi
+        ;;
+    * )
+        log "error: unknown ui_update for $buffer"
+        ;;
+    esac
 } 2> >(logpipe)
 
 ui_init() {
@@ -359,19 +369,23 @@ db_print() {
     awk -F '\t' "{ print $awkspec;}"
 }
 
-db_update_users() {
-    log updating users
-    api_get /organizations/$ORG/users | json_to_db id nick name email | db_store users
-} 2> >(logpipe)
-
-db_update_flows() {
-    log updating flows
-    api_get /flows/all | json_to_db id parameterized_name name description joined | db_store flows
-} 2> >(logpipe)
-
-db_update_private() {
-    log updating private chats
-    api_get /private | json_to_db id name open | db_store private
+db_update() {
+    local db=$1
+    log "db_update $db"
+    case "$db" in
+    users )
+        api_get /organizations/$ORG/users | json_to_db id nick name email | db_store users
+        ;;
+    flows )
+        api_get /flows/all | json_to_db id parameterized_name name description joined | db_store flows
+        ;;
+    private )
+        api_get /private | json_to_db id name open | db_store private
+        ;;
+    * )
+        log "error: unknown db_update for $db"
+        ;;
+    esac
 } 2> >(logpipe)
 
 db_store_messages() {
