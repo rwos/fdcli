@@ -7,44 +7,60 @@ ORG=$(cat $BASEDIR/ORG || echo)
 
 APIURL=https://$TOKEN@api.flowdock.com
 
-CURRENT_FLOW="" ###XXX move into main, as local
-
 MAIN() {
+
     mkdir -p "$BASEDIR"
     echo > "$BASEDIR/fdcli.log"
 
-    # XXX TEST IF ALL PROGS ARE THERE
+    local CURRENT_FLOW="$(cat $BASEDIR/CURRENT_FLOW)"
+    local CURRENT_THREAD=""
 
-    echo hello
+    ## TODO TEST IF ALL PROGS ARE THERE
+    echo hello world
     log hello world
-    echo testing connection to flowdock
-    api_test_connection
+    if [ -z "$CURRENT_FLOW" ]
+    then
+        echo testing connection to flowdock
+        api_test_connection
+    fi
 
+    ## first render - from local DB
     ui_init
-
-    db_update users &
-    db_update flows &
+    ui_update main "$CURRENT_FLOW" &
+    ui_update flows                &
+    ui_update private              &
     wait_jobs
+    ui_redraw main
+    ui_redraw flows
+    ui_redraw private
 
-    ui_update flows && ui_redraw flows &
-    db_update private && ui_update private && ui_redraw private &
+    ## update local DB
+    db_update flows   && ui_update flows   &
+    db_update private && ui_update private &
+    wait_jobs # wait for flow list
+    if [ -n "$CURRENT_FLOW" ]
+    then
+        db_update_latest_messages "$CURRENT_FLOW" && ui_update main "$CURRENT_FLOW"
+    else
+        log 'no saved current flow'
+        joined=$(db flows | db_select joined parameterized_name | db_where True)
+        CURRENT_FLOW="$(echo "$joined" | sort | head -n 1 | tr -d '\n')"
+        db_update_latest_messages "$CURRENT_FLOW" && ui_update main "$CURRENT_FLOW"
+    fi
 
-    ### XXX TODO: 1) make current flow persist
-    ### XXX TODO:    - once that is done, we also don't need to wait for the flow list any more
+    ## redraw after update
+    ui_redraw main
+    ui_redraw flows
+    ui_redraw private
+
+    ## update all flows
     joined=$(db flows | db_select joined parameterized_name | db_where True)
-    CURRENT_FLOW=$(echo "$joined" | sort | head -n 1 | tr -d '[[:space:]]')
-    CURRENT_THREAD=""
-
     for flow in $joined
     do
-        if [ "$flow" == "$CURRENT_FLOW" ]
-        then
-            db_update_latest_messages $flow && ui_update main && ui_redraw main
-        else
-            db_update_latest_messages $flow &
-        fi
+        db_update_latest_messages $flow &
     done
 
+    ## main ui loop
     while true
     do
         read -p '[r]eload | [c]hange flow | change [t]hread | [i] post message | [q]uit ' -n 1 key
@@ -60,17 +76,17 @@ MAIN() {
             local newflow="$(db flows | db_select joined parameterized_name | db_where True | grep "$flow" | head -n 1 | tr -d '[[:space:]]')"
             if [ -z "$newflow" ]
             then
-                ui_redraw main ### XXX actually, only clear field
                 log INVALID FLOW ###XXX
-                echo INVALID FLOW ###XXX
+                ui_redraw main ### XXX actually, only clear field
             else
                 CURRENT_FLOW=$newflow
+                printf -- "$CURRENT_FLOW" > $BASEDIR/CURRENT_FLOW
                 CURRENT_THREAD=""
                 ### XXX XXX XXX EVERYWHERE: quote vars
-                ui_update main
+                ui_update main "$CURRENT_FLOW"
                 ui_redraw main
-                db_update_latest_messages $CURRENT_FLOW
-                ui_update main
+                db_update_latest_messages "$CURRENT_FLOW"
+                ui_update main "$CURRENT_FLOW"
                 ui_redraw main
             fi
             ;;
@@ -91,8 +107,8 @@ MAIN() {
             ### TODO: backspace destroys the line - maybe read char by char?
             read -p 'message: ' -r input
             echo "$input" | api_post_message "$CURRENT_FLOW" "$CURRENT_THREAD"
-            db_update_latest_messages $CURRENT_FLOW
-            ui_update main
+            db_update_latest_messages "$CURRENT_FLOW"
+            ui_update main "$CURRENT_FLOW"
             ui_redraw main
             ;;
         q )
@@ -141,6 +157,17 @@ ui_clear_rect() {
         printf "%${w}.${w}s" ""
     done
 } 2> >(logpipe)
+
+ui_status() {
+    return
+    #### XXX write into ui buffer!
+    tput cup "$UIH" 0
+    tput el
+    if [ "$1" != "done" ]
+    then
+        printf -- "$bold$special$@$off"
+    fi
+}
 
 ui_buffer_display() {
     local name=$1
@@ -256,7 +283,6 @@ ui_resize() {
     UIW=$(tput cols)
     UIH=$(tput lines)
     log resize UIW=$UIW UIH=$UIH
-    ### XXX all the other stuff
     ui_redraw main
     ui_redraw flows
     ui_redraw private
@@ -292,7 +318,8 @@ ui_redraw() {
 
 ui_update() {
     local buffer=$1
-    log "ui_update $buffer"
+    local flow=$2
+    log "ui_update $buffer $flow"
     case "$buffer" in
     flows )
         db flows | db_select joined name parameterized_name | db_where True | sort | \
@@ -303,22 +330,17 @@ ui_update() {
         db private | db_select open name | db_where True | sort | ui_buffer_store private
         ;;
     main )
-        ### TODO: give current flow as param (?)
-        if [ -n "$CURRENT_FLOW" ]
-        then
-            log "ui_update $buffer - with $CURRENT_FLOW"
-            db flows | db_select parameterized_name name description | db_where $CURRENT_FLOW | tr '\t' '\n' | ui_buffer_store flowtitle
-            db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
-                db_join users id nick | \
-                db_format 2 'ui_render_thread_id "%s"' | \
-                db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
-                db_format 1 'printf "${bold}%15.15s${off}"' | \
-                db_format 4 'ui_render_message "%s"' | \
-                db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages
-        fi
+        db flows | db_select parameterized_name name description | db_where $flow | tr '\t' '\n' | ui_buffer_store flowtitle
+        db "${flow}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
+            db_join users id nick | \
+            db_format 2 'ui_render_thread_id "%s"' | \
+            db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
+            db_format 1 'printf "${bold}%15.15s${off}"' | \
+            db_format 4 'ui_render_message "%s"' | \
+            db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages
         ;;
     * )
-        log "error: unknown ui_update for $buffer"
+        log "error: unknown ui_update for $buffer $flow"
         ;;
     esac
 } 2> >(logpipe)
@@ -328,7 +350,8 @@ ui_init() {
     trap "tput rmcup; tput sgr0" EXIT
     #### XXX https://bugzilla.redhat.com/show_bug.cgi?id=1197768
     trap "ui_resize" WINCH
-    ui_resize
+    UIW=$(tput cols)
+    UIH=$(tput lines)
 }
 
 ### local database
@@ -390,6 +413,7 @@ db_print() {
 
 db_update() {
     local db=$1
+    ui_status "downloading $db"
     log "db_update $db"
     case "$db" in
     users )
@@ -405,6 +429,7 @@ db_update() {
         log "error: unknown db_update for $db"
         ;;
     esac
+    ui_status done
 } 2> >(logpipe)
 
 db_store_messages() {
@@ -429,6 +454,7 @@ db_store_messages() {
 db_update_latest_messages() {
     local flow_name=$1
     local since_id=$(db "${flow_name}.messages" | db_select id | head -n 1)
+    ui_status "downloading $flown_name"
     if [ $since_id ]
     then
         log updating messages after $since_id "for" $flow_name
@@ -437,6 +463,7 @@ db_update_latest_messages() {
         log getting last few messages "for" $flow_name
         api_get /flows/$ORG/$flow_name/messages?limit=100 | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
     fi
+    ui_status done
 } 2> >(logpipe)
 
 db_find_thread() {
