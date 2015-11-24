@@ -52,6 +52,7 @@ MAIN() {
         case "$key" in
         r )
             db_update_latest_messages $CURRENT_FLOW
+            ui_update main
             ui_redraw main
             ;;
         c )
