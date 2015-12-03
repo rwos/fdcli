@@ -312,7 +312,7 @@ ui_update() {
             db "${CURRENT_FLOW}.messages" | db_select event user thread_id sent content | db_where message | head -n 50 | \
                 db_join users id nick | \
                 db_format 2 'ui_render_thread_id "%s"' | \
-                db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5' | \
+                db_format 3 'date -R -d "@$((%s / 1000))" | cut -d " " -f 5 | cut -d ":" -f 1,2' | \
                 db_format 1 'printf "${bold}%15.15s${off}"' | \
                 db_format 4 'ui_render_message "%s"' | \
                 db_print '$2" ["$3"] "$1" "$4' | ui_buffer_store messages
