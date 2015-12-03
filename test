@@ -8,36 +8,36 @@ source fdcli
 assert() {
     local expected=$(printf "$1")
     local actual="$(cat)"
-    diff -u <(printf -- "$expected") <(printf -- "$actual") | sed 's/\t/<<TAB>>/g' | colordiff || \
-        (printf -- "expected:\n-------------\n$expected\n-------------\n"; false)
-}
-
-def() {
-    IFS='\n' read -r -d '' ${1} || true;
+    diff -u <(printf '%s' "$expected") <(printf '%s' "$actual") | sed 's/\t/__TAB__/g' | colordiff || \
+        (printf '%s' "expected:\n-------------\n$expected\n-------------\n"; false)
 }
 
 db() {
-    printf -- "${!1}"
+    cat test-${1}.db
 }
 
-def users <<'END'
-id	name	nick	known
-1	some one	somenick	yes
-2	some one else	elsenick	yes
-END
-
+echo 'simple db_select'
 db users | db_select id | assert '1\n2\n'
 db users | db_select id name | assert '1\tsome one\n2\tsome one else\n'
 db users | db_select id name nick | assert '1\tsome one\tsomenick\n2\tsome one else\telsenick\n'
 db users | db_select name id | assert 'some one\t1\nsome one else\t2\n'
 
+echo 'simple db_where'
 db users | db_select id name | db_where 1 | assert 'some one\n'
 db users | db_select id name | db_where 2 | assert 'some one else\n'
 db users | db_select known id | db_where yes | assert '1\n2\n'
 
+echo 'db_format'
 db users | db_select id name | db_format 1 'echo hello' | assert 'hello\tsome one\nhello\tsome one else\n'
-db users | db_select id name | db_format 1 'echo "<<%s>>"' | assert '<<1>>\tsome one\n<<2>>\tsome one else\n'
+db users | db_select id name | db_format 1 "echo '<<%s>>'" | assert '<<1>>\tsome one\n<<2>>\tsome one else\n'
+#### XXX assert is broken, but the test is also broken (weird chars stuff is not echo'd)
+#### TODO: use http://stackoverflow.com/a/1315213 to properly quote shit (inside db_format)
+#### XXX assert broken: expected isn't right ---> move asser over to literals (no \n \t interpretation)
+#### XXX db format broken ==> move over to simple string replacement, not printf
+####                          maybe use python and read from stdin
+db users | db_select id data | db_format 2 "echo '<<%s>>'" | assert '1\t<<something\\non\\ttwo\\tlines\n2\t`'"'"';~\$\#-"™weirdchars\\n\\n\\t\n'
 
+echo 'nowrap'
 printf '12' | nowrap 3 | assert '12\n'
 printf '123456789' | nowrap 3 | assert '123\n'
 printf '123456789' | nowrap 5 | assert '12345\n'
@@ -47,6 +47,7 @@ printf '1234\n5678\n9' | nowrap 3 | assert '123\n'
 printf '1234 5678 9' | nowrap 5 | assert '1234 \n'
 printf '1234 5678 9' | nowrap 4 | assert '1234\n'
 
+echo 'wrap'
 printf '12' | wrap 3 | assert '12\n'
 printf '123456789' | wrap 3 | assert '123\n456\n789\n'
 printf '123456789' | wrap 5 | assert '12345\n6789\n'
