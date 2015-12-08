@@ -9,12 +9,21 @@ assert() {
     local expected=$(printf "$1")
     local actual="$(cat)"
     diff -u <(printf '%s' "$expected") <(printf '%s' "$actual") | sed 's/\t/__TAB__/g' | colordiff || \
-        (printf '%s' "expected:\n-------------\n$expected\n-------------\n"; false)
+        (printf 'expected:\n---------------\n%s\n-------------------\n' "$expected";
+         printf 'got:     \n---------------\n%s\n-------------------\n' "$actual";
+         false)
 }
 
 db() {
     cat test-${1}.db
 }
+
+echo 'utils'
+#echo 'BAR' | prog_template 'echo %s' | assert "BAR\n"
+echo 'ü' | prog_template 'echo hello' | assert 'hello'
+echo 'ü' | prog_template 'echo %s' | assert 'ü'
+echo '<<*''ß%s?`' | prog_template 'echo FOO %s' | assert 'FOO <<*''ß%%s?`'
+echo $'foo\tbar\tbaz' | replace_field 1 'REPLACE' | assert 'REPLACE\tbar\tbaz'
 
 echo 'simple db_select'
 db users | db_select id | assert '1\n2\n'
@@ -28,14 +37,9 @@ db users | db_select id name | db_where 2 | assert 'some one else\n'
 db users | db_select known id | db_where yes | assert '1\n2\n'
 
 echo 'db_format'
-db users | db_select id name | db_format 1 'echo hello' | assert 'hello\tsome one\nhello\tsome one else\n'
-db users | db_select id name | db_format 1 "echo '<<%s>>'" | assert '<<1>>\tsome one\n<<2>>\tsome one else\n'
-#### XXX assert is broken, but the test is also broken (weird chars stuff is not echo'd)
-#### TODO: use http://stackoverflow.com/a/1315213 to properly quote shit (inside db_format)
-#### XXX assert broken: expected isn't right ---> move asser over to literals (no \n \t interpretation)
-#### XXX db format broken ==> move over to simple string replacement, not printf
-####                          maybe use python and read from stdin
-db users | db_select id data | db_format 2 "echo '<<%s>>'" | assert '1\t<<something\\non\\ttwo\\tlines\n2\t`'"'"';~\$\#-"™weirdchars\\n\\n\\t\n'
+db users | db_select id name | db_format 1 'echo hello | tr -d "\n"' | assert 'hello\tsome one\nhello\tsome one else\n'
+db users | db_select id name | db_format 1 "echo '<<%s>>' | tr -d '\n'" | assert '<<1>>\tsome one\n<<2>>\tsome one else\n'
+db users | db_select id data | db_format 2 "echo '<<%s>>' | tr -d '\n'" | assert '1\t<<something\\non\\ttwo\\tlines\n2\t`'"'"';~\$\#-"™weirdchars\\n\\n\\t\n'
 
 echo 'nowrap'
 printf '12' | nowrap 3 | assert '12\n'

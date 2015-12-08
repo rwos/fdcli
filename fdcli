@@ -377,10 +377,10 @@ db_format() {
     while read line
     do
         local orig="$(echo "$line" | cut -d '	' -f "$field")"
-        ##### XXX shell-escape this
-        local prog="$(printf "$prog_template" "$orig")"
-        local new="$(eval "$prog")"
-        echo "$line" | awk -F '\t' "{ OFS=\"	\"; \$$field=\"$new\"; print }"
+        echo "LINE=$line" >&2
+        echo "ORIG=$orig" >&2
+        local new="$(echo "$orig" | prog_template "$prog_template")"
+        echo "$line" | replace_field $1 "$new"
     done
 }
 
@@ -509,7 +509,13 @@ logpipe() {
 
 json() {
     local prog=$(echo "$@")
-    python -c "import json,sys,codecs;u=codecs.getwriter('utf8');sys.stdout=u(sys.stdout);OUT=sys.stdout.write;J=json.load(sys.stdin);$prog"
+    python -c "
+import sys, codecs, json
+sys.stdin = codecs.getreader(\"utf8\")(sys.stdin)
+sys.stdout = codecs.getwriter(\"utf8\")(sys.stdout)
+OUT = sys.stdout.write
+J = json.load(sys.stdin)
+$prog"
 } 2> >(logpipe)
 
 json_to_db() {
@@ -535,6 +541,42 @@ wrap() {
 nowrap() {
     local len=$1
     fold -w $len | head -n 1 | sed 's/\n*$/\n/' | grep -v '^$'
+} 2> >(logpipe)
+
+prog_template() {
+    python -c '
+import sys, codecs, locale, shlex, pipes
+from subprocess import Popen, PIPE
+sys.stdin = codecs.getreader("utf8")(sys.stdin)
+sys.stdout = codecs.getwriter("utf8")(sys.stdout)
+
+replacement = sys.stdin.read().strip()
+template = shlex.split(sys.argv[1])
+prog = []
+for part in template:
+    if "%s" in part:
+        part = pipes.quote(part.replace("%s", replacement))
+    prog.append(part)
+prog = " ".join(prog)
+
+out = Popen(prog, shell=True, stdout=PIPE, executable="/bin/bash").stdout
+out = codecs.getreader("utf8")(out)
+sys.stdout.write(out.read())
+' "$@"
+}
+
+replace_field() {
+    python -c '
+import sys, codecs
+sys.stdin = codecs.getreader("utf8")(sys.stdin)
+sys.stdout = codecs.getwriter("utf8")(sys.stdout)
+for line in sys.stdin.read().split("\n"):
+    if (len(line) == 0):
+        continue
+    line = line.split("\t")
+    line[int(sys.argv[1]) - 1] = sys.argv[2]
+    print "\t".join(line)
+' "$@"
 } 2> >(logpipe)
 
 if [ "$(basename $0)" != "test" ]
