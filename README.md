@@ -50,7 +50,7 @@ All of this is probably already there.
 
 # Copying
 
-Copyright 2015 by Richard Wossal <richard@r-wos.org>
+Copyright 2015-2016 by Richard Wossal <richard@r-wos.org>
 
 Permission to use, copy, modify, distribute, and sell this software
 and its documentation for any purpose is hereby granted without fee,

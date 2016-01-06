@@ -1,0 +1,30 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'rubygems'
+require 'fdcli'
+
+options = {}
+help = nil
+
+optparse = OptionParser.new do|opts|
+  opts.on '-v', '--version', 'Display the version number' do
+    puts Gem::Specification.load('fdcli.gemspec').version
+    exit
+  end
+  opts.on '-h', '--help', 'Display this screen' do
+    help.call
+    exit
+  end
+  help = -> { puts opts }
+end
+
+begin
+  optparse.parse!
+rescue OptionParser::InvalidOption => e
+  puts e.message
+  help.call
+  exit 1
+end
+
+FDCLI.start(options)
