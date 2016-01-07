@@ -1,5 +1,6 @@
 require 'curses'
 require 'terminfo'
+require_relative 'utils'
 
 include Curses
 
@@ -22,7 +23,7 @@ module UI
     @win.each_value { |w| w.refresh }
   end
 
-  def self.init(log)
+  def self.init()
     init_screen
     at_exit do
       close_screen
@@ -32,7 +33,7 @@ module UI
 
     loop do
       k = @win[:main].getch
-      log.info k
+      Utils.log.info k
       case k
       when KEY_RESIZE, KEY_REFRESH
         make_windows
