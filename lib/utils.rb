@@ -1,3 +1,5 @@
+# utilities for fdcli - Copyright 2016 by Richard Wossal <richard@r-wos.org>
+# MIT licensed, see README for details
 require 'fileutils'
 require 'logger'
 

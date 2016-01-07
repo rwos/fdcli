@@ -1,4 +1,6 @@
 #!/bin/bash
+# main part of fdcli - Copyright by Richard Wossal <richard@r-wos.org>
+# MIT licensed, see README for details
 
 BASEDIR="$HOME/.config/fdcli"
 

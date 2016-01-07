@@ -1,3 +1,5 @@
+# user interface part of fdcli - Copyright 2016 by Richard Wossal <richard@r-wos.org>
+# MIT licensed, see README for details
 require 'curses'
 require 'terminfo'
 require_relative 'utils'

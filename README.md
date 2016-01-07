@@ -1,38 +1,23 @@
 # fdcli
 
-# DO NOT USE
-
-This is buggy, incomplete, and even when it works (which it doesn't very often)
-almost unusable. Assume it will delete your entire hard drive, and install
-Windows XP. No warranties, you're on your own here.
-
-Work in progress.
-
----
-
 A visual command-line client for [Flowdock](https://www.flowdock.com) with
 vi/mutt like key bindings.
 
 # Install
 
-* `cp fdcli /bin`
+* `gem install fdcli` (maybe with sudo)
 * `mkdir -p ~/.config/fdcli`
 * go to https://www.flowdock.com/account/tokens, copy your personal API token
-  into a file called `~/.config/fdcli/TOKEN`
-* put the name of your flowdock organization into `~/.config/fdcli/ORG`
+* create `~/.config/fdcli/config` and copy the token and your flowdock
+  "organisation" name into it:
 
-Should look something like this then:
 
-    $ pwd
-    /home/richard/.config/fdcli
-    $ cat TOKEN 
-    b1946ac92492d2347c6235b4d2611184
-    $ cat ORG 
-    my-flowdock-org
+  org: your-flowdock-org-name
+  token: b8227198b8ef6c57e2f55e34c3722706
 
 # Usage
 
-* `fdcli`, keys are indicated at the prompt at the top
+  fdcli
 
 # Files
 
@@ -40,13 +25,15 @@ Should look something like this then:
   format with a header line
 * there's a log at `~/.config/fdcli/fdcli.log` (cleared on every run)
 
-# Requirements
+# Bugs
 
-All of this is probably already there.
+It will probably not work on Windows but who cares.
 
-* a non-ancient `bash` at `/bin/bash`
-* `python` 2.x
-* `perl` 5.x
+The normal `ncurses` works but doesn't handle UTF-8 correctly, you'll need to
+link ruby to `ncursesw`. What seems to work on Debian is doing
+
+  sudo apt-get install libncursesw5 libncursesw5-dev
+  sudo apt-get install --reinstall ruby ruby-dev
 
 # Copying
 

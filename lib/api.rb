@@ -1,3 +1,5 @@
+# api part of fdcli - Copyright 2016 by Richard Wossal <richard@r-wos.org>
+# MIT licensed, see README for details
 require 'net/http'
 require_relative 'utils'
 
