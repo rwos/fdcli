@@ -27,4 +27,5 @@ rescue OptionParser::InvalidOption => e
   exit 1
 end
 
+ENV['TERM'] = 'xterm-1003' # hack to get mouse position reporting to work
 FDCLI.start(options)

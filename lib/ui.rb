@@ -37,19 +37,32 @@ module UI
 
   def self.init
     init_screen
+    noecho
+    raw
+    #start_color
+    stdscr.keypad true
+    crmode
+    mousemask ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION
+    refresh
+    close = false
     at_exit do
       close_screen
     end
     make_windows
+    Utils.log.info(Curses.ESCDELAY())
   end
 
   def self.running
     loop do
-      k = @win[:main].getch
+      k = getch
+      Utils.log.info "K=#{k}"
       case k
       when KEY_RESIZE, KEY_REFRESH
         make_windows
-        next
+      when KEY_MOUSE
+        Utils.log.info "MOUSE KEY"
+        m = getmouse
+        Utils.log.info "MOUSE: #{[m.x, m.y, m.bstate]} | KEY: #{k}"
       when 'q'
         yield :quit
       else
