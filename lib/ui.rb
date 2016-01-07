@@ -23,27 +23,23 @@ module UI
     @win.each_value { |w| w.refresh }
   end
 
-  def self.init()
+  def self.running
     init_screen
     at_exit do
       close_screen
     end
-
     make_windows
-
     loop do
       k = @win[:main].getch
-      Utils.log.info k
       case k
       when KEY_RESIZE, KEY_REFRESH
         make_windows
+        next
       when ?q
-        exit
+        yield :quit
+      else
+        yield :unknown
       end
     end
-  end
-
-  def self.redraw
-    @win.each_value { |w| w.refresh }
   end
 end

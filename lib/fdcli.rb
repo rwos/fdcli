@@ -17,8 +17,13 @@ module FDCLI
 
     begin
       current_flow = nil
-      p @basedir
-      UI.init
+      UI.running do |action|
+        Utils.log.info "action: #{action}"
+        case action
+        when :quit
+          exit
+        end
+      end
     rescue StandardError => e
       puts e.message
       Utils.log.fatal e
