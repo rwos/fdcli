@@ -1,4 +1,4 @@
-# database part of fdcli - Copyright by Richard Wossal <richard@r-wos.org>
+# database part of fdcli - Copyright 2016 by Richard Wossal <richard@r-wos.org>
 # MIT licensed, see README for details
 require_relative 'utils'
 module DB
@@ -42,6 +42,7 @@ module DB
 
       spec.gsub! /\)+/, '' ### XXX TODO reset color attribs
       spec.gsub! '(selectable ', '' ### XXX TODO set color
+      spec.gsub! '(selected ', '' ### XXX TODO set color
 
       -> (data) {
         lines = data.map do |line|
@@ -60,5 +61,11 @@ module DB
         lines.join("\n")
       }
     end
+  end
+
+  def self.reverse
+    -> (data) {
+      data.reverse
+    }
   end
 end

@@ -52,7 +52,6 @@ module Utils
       @cur
     end
   end
-  alias_method :C, :method
 
   def self.fatal_token_error
     puts <<END
