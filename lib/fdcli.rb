@@ -6,8 +6,6 @@ require_relative 'api'
 # fdcli - a flowdock command line client
 module FDCLI
 
-  ### main
-
   def self.start(_options)
     puts 'hello'
     Utils.log.info 'hello world'
