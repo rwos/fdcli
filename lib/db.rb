@@ -4,9 +4,9 @@ require_relative 'utils'
 module DB
   include Utils
 
-  def self.from(name)
+  def self.from(name, *select)
       f = File.open "#{BASEDIR}/#{name}.db", File::RDONLY
-      r = f.read().split("\n").map do |line|
+      table = f.read().split("\n").map do |line|
         line.split("\t").map do |part|
           part.gsub! '\n' "\n"
           part.gsub! '\t' "\t"
@@ -14,7 +14,15 @@ module DB
         end
       end
       f.close
-      P.new r
+
+      if select
+        head = table.first
+        data = table.drop 1
+        indices = select.map { |a| head.find_index a }
+        data.map { |line| line.values_at(*indices) }
+      else
+        table
+      end
   end
 
   def self.from_messages(name)
@@ -24,10 +32,6 @@ module DB
   def self.select(*args)
     Utils.log.info args
     -> (table) {
-      head = table.first
-      data = table.drop 1
-      indices = args.map { |a| head.find_index a }
-      data.map { |line| line.values_at(*indices) }
     }
   end
 
@@ -61,11 +65,5 @@ module DB
         lines.join("\n")
       }
     end
-  end
-
-  def self.reverse
-    -> (data) {
-      data.reverse
-    }
   end
 end

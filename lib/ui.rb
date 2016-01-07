@@ -29,10 +29,12 @@ module UI
     end
   end
 
-  def self.fill(name, value)
-    @content[name] << value
-    @win[name].addstr(value)
-    @win[name].refresh
+  def self.fill(name, elements)
+    elements.map do |e|
+      @content[name] << e.text
+      @win[name].addstr e.text
+      @win[name].refresh
+    end
   end
 
   def self.init
@@ -43,8 +45,6 @@ module UI
     stdscr.keypad true
     crmode
     mousemask ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION
-    refresh
-    close = false
     at_exit do
       close_screen
     end
@@ -68,6 +68,16 @@ module UI
       else
         yield :unknown
       end
+    end
+  end
+
+  class Element
+    attr_reader :text, :hover, :click, :style
+    def initialize(text, hover: nil, click: nil, style: nil)
+      @text = text
+      @hover = hover
+      @click = click
+      @style = style
     end
   end
 end

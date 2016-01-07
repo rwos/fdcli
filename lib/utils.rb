@@ -39,7 +39,7 @@ module Utils
     end
   end
 
-  # Pipe
+  # Pipe XXX XXX KILL
   class P
     def initialize(v)
       @cur = v
