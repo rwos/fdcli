@@ -1,7 +1,6 @@
 require 'net/http'
 require_relative 'utils'
 
-
 module Api
   include Utils
 

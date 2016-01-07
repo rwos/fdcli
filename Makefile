@@ -2,7 +2,7 @@ init:
 	bundle install --path vendor/bundle
 
 lint:
-	bundle exec rubocop
+	bundle exec rubocop -c rubocop.yml
 
 run:
 	bundle exec ruby -Ilib ./bin/fdcli

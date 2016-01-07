@@ -20,7 +20,7 @@ module UI
     @win.each_value { |w| w.box '|', '-' } ## DEBUG
     @win[:main_info].setpos(0, 0)
     @win[:main_info].addstr("HELLO")
-    @win.each_value { |w| w.refresh }
+    @win.each_value(&:refresh)
   end
 
   def self.running
@@ -35,7 +35,7 @@ module UI
       when KEY_RESIZE, KEY_REFRESH
         make_windows
         next
-      when ?q
+      when 'q'
         yield :quit
       else
         yield :unknown

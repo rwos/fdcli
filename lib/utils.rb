@@ -1,22 +1,21 @@
 require 'fileutils'
 require 'logger'
 
-
 module Utils
 
   BASEDIR = "#{Dir.home}/.config/fdcli"
-  #TOKEN
-  #ORG
-  #APIURL
-  #LOG
+  # TOKEN
+  # ORG
+  # APIURL
+  # LOG
 
   def self.log
     unless self.const_defined? :LOG
       FileUtils.mkdir_p BASEDIR
-      f = File.open "#{BASEDIR}/fdcli.log", File::WRONLY | File::APPEND | File::CREAT
+      f = File.open "#{BASEDIR}/fdcli.log", File::WRONLY | File::CREAT
       f.sync = true
       f.truncate 0
-      self.const_set :LOG, (Logger.new f)
+      const_set :LOG, (Logger.new f)
     end
     LOG
   end
@@ -30,14 +29,15 @@ module Utils
           h[t[0]] = t[1].strip
         end
       end
-      self.const_set :TOKEN, h['token']
-      self.const_set :ORG, h['org']
-      self.const_set :APIURL, "https://#{TOKEN}@api.flowdock.com"
+      const_set :TOKEN, h['token']
+      const_set :ORG, h['org']
+      const_set :APIURL, "https://#{TOKEN}@api.flowdock.com"
     rescue
       fatal_token_error
     end
   end
 
+  # Pipe
   class P
     def self.|(v)
       if @cur.nil?
