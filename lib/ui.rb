@@ -7,6 +7,7 @@ include Curses
 # fdcli ui
 module UI
   @win = {}
+  @content = {}
 
   def self.make_windows
     clear
@@ -18,17 +19,29 @@ module UI
     @win[:main_input] = Window.new 3, (cols / 4) * 3, lines - 3, cols / 4
 
     @win.each_value { |w| w.box '|', '-' } ## DEBUG
-    @win[:main_info].setpos(0, 0)
-    @win[:main_info].addstr("HELLO")
-    @win.each_value(&:refresh)
+    @win.each do |k, w|
+      w.setpos 0, 0
+      @content[k] = '' unless @content.has_key? k
+      w.addstr(@content[k])
+      w.refresh
+    end
   end
 
-  def self.running
+  def self.fill(name, value)
+    @content[name] << value
+    @win[name].addstr(value)
+    @win[name].refresh
+  end
+
+  def self.init
     init_screen
     at_exit do
       close_screen
     end
     make_windows
+  end
+
+  def self.running
     loop do
       k = @win[:main].getch
       case k

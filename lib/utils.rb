@@ -39,13 +39,15 @@ module Utils
 
   # Pipe
   class P
-    def self.|(v)
-      if @cur.nil?
-        @cur = v
-        return self
-      end
+    def initialize(v)
+      @cur = v
+    end
+    def |(v)
       @cur = v.call(@cur)
       self
+    end
+    def to_str
+      @cur
     end
   end
   alias_method :C, :method
