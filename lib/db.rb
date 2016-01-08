@@ -25,8 +25,8 @@ module DB
       end
   end
 
-  def self.from_messages(name)
-      from "#{name}.messages"
+  def self.from_messages(name, *select)
+      from "#{name}.messages", *select
   end
 
   def self.select(*args)

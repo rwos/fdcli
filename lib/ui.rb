@@ -20,49 +20,78 @@ module UI
     @win[:main_info] = Window.new 3, (cols / 4) * 3, 0, cols / 4
     @win[:main_input] = Window.new 3, (cols / 4) * 3, lines - 3, cols / 4
 
-    @win.each_value { |w| w.box '|', '-' } ## DEBUG
     @win.each do |k, w|
-      w.setpos 0, 0
-      @content[k] = '' unless @content.has_key? k
-      w.addstr(@content[k])
-      w.refresh
+      @content[k] = [] unless @content.has_key? k
+      fill(k, @content[k])
     end
   end
 
   def self.fill(name, elements)
-    elements.map do |e|
-      @content[name] << e.text
-      @win[name].addstr e.text
-      @win[name].refresh
+    w = @win[name]
+    ### FIXME: w.clear should do this but somehow redraws the whole screen
+    ###        (all windows) which looks shit
+    for y in (w.begy..(w.begy+w.maxy))
+      w.setpos y, 0
+      w.clrtoeol
     end
+    w.setpos 0, 0
+    w.box '|', '-' ### XXX DEBUG
+    @content[name] = elements
+    elements.map! do |e|
+      ### Current assumption: elements are blocks (there's always only
+      ### one element on a line; elements can span multiple lines)
+      e.pos = {
+        xstart: w.curx + w.begx,
+        ystart: w.cury + w.begy,
+        xend: [e.text.length + w.begx, w.begx + w.maxx].min,
+      }
+      ### XXX styles should live inside Element
+      case e.style
+      when :selected
+        w.attron(A_STANDOUT)
+        w.addstr e.text
+        w.attroff(A_STANDOUT)
+      else
+        w.addstr e.text
+      end
+      e.pos[:yend] = w.cury + w.begy
+      w.addstr "\n"
+      e
+    end
+    w.refresh
   end
 
-  def self.init
+  def self.init(unhover)
+    @unhover = unhover
     init_screen
     noecho
+    curs_set 0
     raw
     #start_color
     stdscr.keypad true
     crmode
-    mousemask ALL_MOUSE_EVENTS | REPORT_MOUSE_POSITION
+    mousemask BUTTON1_CLICKED | REPORT_MOUSE_POSITION
     at_exit do
       close_screen
     end
     make_windows
-    Utils.log.info(Curses.ESCDELAY())
   end
 
   def self.running
     loop do
       k = getch
-      Utils.log.info "K=#{k}"
       case k
       when KEY_RESIZE, KEY_REFRESH
         make_windows
       when KEY_MOUSE
-        Utils.log.info "MOUSE KEY"
         m = getmouse
-        Utils.log.info "MOUSE: #{[m.x, m.y, m.bstate]} | KEY: #{k}"
+        next if m.nil?
+        case m.bstate
+        when BUTTON1_CLICKED, BUTTON1_PRESSED, BUTTON1_DOUBLE_CLICKED
+          fire_click m.x, m.y
+        else
+          fire_hover m.x, m.y
+        end
       when 'q'
         yield :quit
       else
@@ -71,7 +100,30 @@ module UI
     end
   end
 
+  def self.find_element(x, y)
+    @content.values.flatten.find { |e|
+      e.pos[:ystart] <= y && e.pos[:yend] >= y &&
+      e.pos[:xstart] <= x && e.pos[:xend] >= x
+    }
+  end
+
+  def self.fire_click(x, y)
+    e = find_element x, y
+    Utils.log.info "CLICK: #{[x, y]} - #{e}"
+    e.click.call unless e.nil? || e.click.nil?
+  end
+
+  def self.fire_hover(x, y)
+    e = find_element x, y
+    if e.nil? || e.hover.nil?
+      @unhover.call
+    else
+      e.hover.call
+    end
+  end
+
   class Element
+    attr_accessor :pos
     attr_reader :text, :hover, :click, :style
     def initialize(text, hover: nil, click: nil, style: nil)
       @text = text

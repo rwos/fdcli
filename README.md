@@ -1,7 +1,7 @@
 # fdcli
 
 A visual command-line client for [Flowdock](https://www.flowdock.com) with
-vi/mutt like key bindings.
+roughly vi/mutt like key bindings and mouse support.
 
 # Install
 
@@ -10,7 +10,6 @@ vi/mutt like key bindings.
 * go to https://www.flowdock.com/account/tokens, copy your personal API token
 * create `~/.config/fdcli/config` and copy the token and your flowdock
   "organisation" name into it:
-
 
   org: your-flowdock-org-name
   token: b8227198b8ef6c57e2f55e34c3722706
