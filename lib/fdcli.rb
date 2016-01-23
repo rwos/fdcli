@@ -55,6 +55,10 @@ module FDCLI
     UI.running do |action, data|
       Utils.log.info "action: #{action} #{data}"
       case action
+      when :scroll_up
+        UI.scroll :main, true
+      when :scroll_down
+        UI.scroll :main, false
       when :quit
         exit
       when :hover

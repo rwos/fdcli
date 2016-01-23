@@ -18,6 +18,7 @@ module UI
     @win[:flows] = Window.new lines / 3 * 2, cols / 4, 0, 0
     @win[:chats] = Window.new lines / 3, cols / 4, lines / 3 * 2, 0
     @win[:main] = Window.new lines - 6, (cols / 4) * 3, 3, cols / 4
+    @win[:main].scrollok true
     @win[:main_info] = Window.new 3, (cols / 4) * 3, 0, cols / 4
     @win[:main_input] = Window.new 3, (cols / 4) * 3, lines - 3, cols / 4
 
@@ -63,6 +64,12 @@ module UI
     w.refresh
   end
 
+  def self.scroll(name, up)
+    w = @win[name]
+    w.scrl(up ? -1 : 1)
+    w.refresh
+  end
+
   def self.init()
     init_screen
     noecho
@@ -71,7 +78,7 @@ module UI
     #start_color
     stdscr.keypad true
     crmode
-    mousemask BUTTON1_CLICKED | REPORT_MOUSE_POSITION
+    mousemask BUTTON1_CLICKED | REPORT_MOUSE_POSITION | ALL_MOUSE_EVENTS
     at_exit do
       close_screen
     end
@@ -91,15 +98,32 @@ module UI
         when BUTTON1_CLICKED, BUTTON1_PRESSED, BUTTON1_DOUBLE_CLICKED
           hit = fire_click(m.x, m.y)
           yield :click, hit if hit
-        else
-          fire_hover(m.x, m.y).each do |hit|
-            yield *hit
+        when BUTTON4_PRESSED
+          yield :scroll_up
+        when REPORT_MOUSE_POSITION
+          ### XXX hack - scroll down only seems to report mouse position
+          if @current_mouse_position == [m.x, m.y]
+            yield :scroll_down
+          else
+            was_hover = false
+            fire_hover(m.x, m.y).each do |hit|
+              was_hover = true
+              yield *hit
+            end
+            unless was_hover
+              yield :unknown_mouse, [k, m, m.bstate, m.x, m.y, @current_mouse_position]
+            end
           end
+          @current_mouse_position = [m.x, m.y]
         end
       when 'q'
-        yield :quit, nil
+        yield :quit
+      when 'k'
+        yield :scroll_up
+      when 'j'
+        yield :scroll_down
       else
-        yield :unknown, nil
+        yield :unknown, k
       end
     end
   end
