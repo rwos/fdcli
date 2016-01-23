@@ -32,17 +32,23 @@ module FDCLI
       .select { |row| row.first === 'True' }
       .map { |row|
         _, name, param_name = row
-        style = :selectable
-        style = :selected if (param_name.strip === current_flow)
-        FlowSelector.new name, style: style, hoverable: true, clickable: true, state: param_name
+        if (param_name.strip === current_flow)
+          content = [:reverse, name, :endreverse]
+        else
+          content = [name]
+        end
+        FlowSelector.new content, hoverable: true, clickable: true, state: param_name
       }
+      .unshift(UI::Element.new [''])
+      .unshift(UI::Element.new [:underline, "Flows", :endunderline])
+
     UI.fill :main, main_content(current_flow)
     UI.fill :main_info,
       DB.from(:flows, 'parameterized_name', 'name', 'description')
       .select { |row| row.first === current_flow }
       .map { |row|
         param_name, name, description = row
-        UI::Element.new "#{name} (#{param_name})\n#{description}"
+        UI::Element.new [:underline, "#{name} (#{param_name})", :endunderline, "\n#{description}"]
       }
     ##### XXX XXX return to simple map
     #| DB.select('joined', 'name', 'parameterized_name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
@@ -61,7 +67,7 @@ module FDCLI
       when :hover
         case data
         when FlowSelector
-          display_help "Switch to #{data.text} (#{data.state})"
+          display_help "Switch to #{data.text[0]} (#{data.state})"
         end
       when :unhover
         display_help ''
@@ -77,17 +83,37 @@ module FDCLI
   def self.main_content(current_flow)
     ### XXX TODO scrolling: if we're at the top of the pad, put new data into it
     ###          - maybe implement as an event, too
+    nicks = {}
+    DB.from(:users, 'id', 'nick').map { |row| nicks[row[0]] = row[1] }
+
+    start_day = nil;
+    last_poster = nil;
     DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content')
     .reverse
     .select { |row| row.first === 'message' }
-    .map { |row|
-      _, thread_id, sent, user, content = row
+    .flat_map { |row|
+      _, thread_id, timestamp, user_id, content = row
       content = '' if content.nil?
-      UI::Element.new user + ": " + sent + ">> " + content
+      nick = nicks.fetch user_id, 'unknown user'
+      sent = Time.at(timestamp.to_i / 1000).strftime '%H:%M'
+      day = Time.at(timestamp.to_i / 1000).strftime '%F'
+
+      out = []
+      start_day = day if start_day.nil?
+      if day != start_day
+        out.push(UI::Element.new ["     ┌────────────────────────────────── #{day}"])
+        start_day = day
+      end
+      if nick == last_poster ### TODO: also check thread (different threads should show nick again)
+        out.push(UI::Element.new ["#{sent}│ ", ' ' * (nick.length + 1), content])
+      else
+        last_poster = nick
+        out.push(UI::Element.new ["#{sent}│ ", :bold, nick, :endbold, " ", content])
+      end
     }
   end
 
   def self.display_help(msg)
-    UI.fill :main_input, [UI::Element.new(msg)]
+    UI.fill :main_input, [UI::Element.new([msg])]
   end
 end

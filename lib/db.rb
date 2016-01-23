@@ -6,10 +6,10 @@ module DB
 
   def self.from(name, *select)
       f = File.open "#{BASEDIR}/#{name}.db", File::RDONLY
-      table = f.read().split("\n").map do |line|
-        line.split("\t").map do |part|
-          part.gsub! '\n' "\n"
-          part.gsub! '\t' "\t"
+      table = f.read().split("\n").map! do |line|
+        line.split("\t").map! do |part|
+          part.gsub! '\n', "\n"
+          part.gsub! '\t', "\t"
           part
         end
       end

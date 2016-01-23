@@ -39,7 +39,6 @@ module UI
       w.clrtoeol
     end
     w.setpos 0, 0
-    w.box '|', '-' ### XXX DEBUG
     @content[name] = elements
     elements.map! do |e|
       ### XXX
@@ -48,17 +47,10 @@ module UI
       e.pos = {
         xstart: w.curx + w.begx,
         ystart: w.cury + w.begy,
-        xend: [e.text.length + w.begx, w.begx + w.maxx].min,
+        xend: w.begx + w.maxx,
       }
       ### XXX styles should live inside Element
-      case e.style
-      when :selected
-        w.attron(A_STANDOUT)
-        w.addstr e.text
-        w.attroff(A_STANDOUT)
-      else
-        w.addstr e.text
-      end
+      e.render(w)
       e.pos[:yend] = w.cury + w.begy
       w.addstr "\n"
       e
@@ -167,13 +159,34 @@ module UI
 
   class Element
     attr_accessor :pos
-    attr_reader :text, :hoverable, :clickable, :style, :state
-    def initialize(text, hoverable: false, clickable: false, style: nil, state: nil)
+    attr_reader :text, :hoverable, :clickable, :state
+    def initialize(text, hoverable: false, clickable: false, state: nil)
       @text = text
       @hoverable = hoverable
       @clickable = clickable
-      @style = style
       @state = state
+    end
+    def render(w)
+      map = {
+        bold: A_BOLD,
+        reverse: A_STANDOUT,
+        underline: A_UNDERLINE,
+      }
+      ##### XXX TODO: Element is more like a <div>, and these should be <span>s (including hover + click and shit)
+      @text.each do |part|
+        if part.is_a? Symbol
+          if part =~ /^end/
+            key = part.to_s.sub(/^end/, '').to_sym
+            Utils.log.fatal "unknown end style #{part} (#{key})" if map[key].nil?
+            w.attroff map[key]
+          else
+            Utils.log.fatal "unknown style #{part}" if map[part].nil?
+            w.attron map[part]
+          end
+        else
+          w.addstr part
+        end
+      end
     end
   end
 end
