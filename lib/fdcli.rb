@@ -11,7 +11,7 @@ module FDCLI
     puts 'hello'
     Utils.log.info 'hello world'
     Utils.init_config
-    Api.test_connection
+    #Api.test_connection ### XXX switch on again
     Utils.log.info 'all good - starting'
     UI.init
     begin
@@ -36,16 +36,7 @@ module FDCLI
         style = :selected if (param_name.strip === current_flow)
         FlowSelector.new(name, style: style, hoverable: true, clickable: true, state: param_name)
       }
-    UI.fill :main,
-      DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content')
-      .take(100) ## XXX scrolling....
-      .reverse
-      .select { |row| row.first === 'message' }
-      .map { |row|
-        _, _, _, user, content = row
-        content = '' if content.nil?
-        UI::Element.new user + ": " + content
-      }
+    UI.fill :main, main_content(current_flow)
     ##### XXX XXX return to simple map
     #| DB.select('joined', 'name', 'parameterized_name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
     #UI.fill :flows, DB.from(:flows) | DB.select('joined', 'name', 'parameterized_name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
@@ -56,9 +47,9 @@ module FDCLI
       Utils.log.info "action: #{action} #{data}"
       case action
       when :scroll_up
-        UI.scroll :main, true
+        UI.scroll_main up: true
       when :scroll_down
-        UI.scroll :main, false
+        UI.scroll_main up: false
       when :quit
         exit
       when :hover
@@ -75,6 +66,20 @@ module FDCLI
         end
       end
     end
+  end
+
+  def self.main_content(current_flow)
+    ### XXX TODO: scrolling: put _some data_ into a pad, scroll the pad
+    ###                      if we're at the top of the pad, put new data into it
+    DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content')
+    .reverse
+    .take(100)
+    .select { |row| row.first === 'message' }
+    .map { |row|
+      _, thread_id, sent, user, content = row
+      content = '' if content.nil?
+      UI::Element.new user + ": " + sent + ">> " + content
+    }
   end
 
   def self.display_help(msg)

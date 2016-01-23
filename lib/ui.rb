@@ -10,15 +10,16 @@ include Curses
 module UI
   @win = {}
   @content = {}
-  @currently_hovered = nil;
+  @currently_hovered = nil
+  @current_main_scroll = 0
 
   def self.make_windows
     clear
     refresh
     @win[:flows] = Window.new lines / 3 * 2, cols / 4, 0, 0
     @win[:chats] = Window.new lines / 3, cols / 4, lines / 3 * 2, 0
-    @win[:main] = Window.new lines - 6, (cols / 4) * 3, 3, cols / 4
-    @win[:main].scrollok true
+    @win[:main_window] = Window.new lines - 6, (cols / 4) * 3, 3, cols / 4
+    @win[:main] = Pad.new 1000, (cols / 4) * 3
     @win[:main_info] = Window.new 3, (cols / 4) * 3, 0, cols / 4
     @win[:main_input] = Window.new 3, (cols / 4) * 3, lines - 3, cols / 4
 
@@ -28,6 +29,7 @@ module UI
     end
   end
 
+  # returns the elements that actually made it onto the screen
   def self.fill(name, elements)
     w = @win[name]
     ### FIXME: w.clear should do this but somehow redraws the whole screen
@@ -61,13 +63,23 @@ module UI
       w.addstr "\n"
       e
     end
-    w.refresh
+    if w.is_a? Pad #### XXX this looks more general than it is, only works for :main
+      # paint pad into main window
+      wm = @win[:main_window]
+      # reset scroll position so that the last line is visible
+      @current_main_scroll = w.cury - (wm.maxy - wm.begy)
+      w.refresh @current_main_scroll, 0, wm.begy, wm.begx, wm.maxy, wm.maxx
+    else
+      w.refresh
+    end
   end
 
-  def self.scroll(name, up)
-    w = @win[name]
-    w.scrl(up ? -1 : 1)
-    w.refresh
+  def self.scroll_main(up: true)
+    @current_main_scroll += up ? -1 : 1
+    @current_main_scroll = 0 if @current_main_scroll < 0
+    w = @win[:main]
+    wm = @win[:main_window]
+    w.refresh @current_main_scroll, 0, wm.begy, wm.begx, wm.maxy, wm.maxx
   end
 
   def self.init()
