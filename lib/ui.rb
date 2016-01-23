@@ -10,6 +10,7 @@ include Curses
 module UI
   @win = {}
   @content = {}
+  @currently_hovered = nil;
 
   def self.make_windows
     clear
@@ -38,6 +39,7 @@ module UI
     w.box '|', '-' ### XXX DEBUG
     @content[name] = elements
     elements.map! do |e|
+      ### XXX
       ### Current assumption: elements are blocks (there's always only
       ### one element on a line; elements can span multiple lines)
       e.pos = {
@@ -61,8 +63,7 @@ module UI
     w.refresh
   end
 
-  def self.init(unhover)
-    @unhover = unhover
+  def self.init()
     init_screen
     noecho
     curs_set 0
@@ -88,14 +89,17 @@ module UI
         next if m.nil?
         case m.bstate
         when BUTTON1_CLICKED, BUTTON1_PRESSED, BUTTON1_DOUBLE_CLICKED
-          fire_click m.x, m.y
+          hit = fire_click(m.x, m.y)
+          yield :click, hit if hit
         else
-          fire_hover m.x, m.y
+          fire_hover(m.x, m.y).each do |hit|
+            yield *hit
+          end
         end
       when 'q'
-        yield :quit
+        yield :quit, nil
       else
-        yield :unknown
+        yield :unknown, nil
       end
     end
   end
@@ -109,27 +113,31 @@ module UI
 
   def self.fire_click(x, y)
     e = find_element x, y
-    Utils.log.info "CLICK: #{[x, y]} - #{e}"
-    e.click.call unless e.nil? || e.click.nil?
+    e if !e.nil? && e.clickable
   end
 
   def self.fire_hover(x, y)
     e = find_element x, y
-    if e.nil? || e.hover.nil?
-      @unhover.call
-    else
-      e.hover.call
+    events = []
+    if e != @currently_hovered
+      if !@currently_hovered.nil? && @currently_hovered.hoverable
+        events.push [:unhover, @currently_hovered]
+      end
+      @currently_hovered = e
+      events.push [:hover, e] if !e.nil? && e.hoverable
     end
+    events
   end
 
   class Element
     attr_accessor :pos
-    attr_reader :text, :hover, :click, :style
-    def initialize(text, hover: nil, click: nil, style: nil)
+    attr_reader :text, :hoverable, :clickable, :style, :state
+    def initialize(text, hoverable: false, clickable: false, style: nil, state: nil)
       @text = text
-      @hover = hover
-      @click = click
+      @hoverable = hoverable
+      @clickable = clickable
       @style = style
+      @state = state
     end
   end
 end
