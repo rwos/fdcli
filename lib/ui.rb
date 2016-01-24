@@ -52,8 +52,8 @@ module UI
     @win[:main_info] = Window.new 2, (cols / 4) * 3, 0, cols / 4
     @win[:main_input] = Window.new 2, (cols / 4) * 3, lines - 2, cols / 4
 
-    @win.each do |k, w|
-      @content[k] = [] unless @content.has_key? k
+    @win.each do |k, _|
+      @content[k] = [] unless @content.key? k
       fill(k, @content[k])
     end
   end
@@ -63,7 +63,7 @@ module UI
     w = @win[name]
     ### FIXME: w.clear should do this but somehow redraws the whole screen
     ###        (all windows) which looks shit
-    for y in (w.begy..(w.begy+w.maxy))
+    (w.begy..(w.begy+w.maxy)).each do |y|
       w.setpos y, 0
       w.clrtoeol
     end
@@ -95,7 +95,7 @@ module UI
     end
   end
 
-  def self.scroll_main(up: true)
+  def self.scroll_main(up: true) ## XXX doesn't have to be public
     @current_main_scroll += up ? -1 : 1
     @current_main_scroll = 0 if @current_main_scroll < 0
     w = @win[:main]
@@ -108,7 +108,6 @@ module UI
     noecho
     curs_set 0
     raw
-    #start_color
     stdscr.keypad true
     crmode
     mousemask BUTTON1_CLICKED | REPORT_MOUSE_POSITION | ALL_MOUSE_EVENTS
@@ -132,11 +131,11 @@ module UI
           hit = fire_click(m.x, m.y)
           yield :click, hit if hit
         when BUTTON4_PRESSED
-          yield :scroll_up
+          scroll_main up: true
         when REPORT_MOUSE_POSITION
           ### XXX hack - scroll down only seems to report mouse position
           if @current_mouse_position == [m.x, m.y]
-            yield :scroll_down
+            scroll_main up: false
           else
             was_hover = false
             fire_hover(m.x, m.y).each do |hit|
@@ -149,12 +148,13 @@ module UI
           end
           @current_mouse_position = [m.x, m.y]
         end
+      ### XXX keys and modes should come from the outside
       when 'q'
         yield :quit
       when 'k'
-        yield :scroll_up
+        scroll_main up: true
       when 'j'
-        yield :scroll_down
+        scroll_main up: false
       else
         yield :unknown, k
       end

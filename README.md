@@ -13,6 +13,7 @@ roughly vi/mutt like key bindings and mouse support.
 * create `~/.config/fdcli/config` and copy the token and your flowdock
   "organisation" name into it:
 
+
     org: your-flowdock-org-name
     token: b8227198b8ef6c57e2f55e34c3722706
 
@@ -28,13 +29,18 @@ roughly vi/mutt like key bindings and mouse support.
 
 # Bugs
 
-It will probably not work on Windows but who cares.
+In `xterm` (but not in `rxvt`), scrolling makes the left hand sidebar
+flicker.
+
+You can't select chat messages with the mouse (to copy+paste them).
 
 The normal `ncurses` works but doesn't handle UTF-8 correctly, you'll need to
 link ruby to `ncursesw`. What seems to work on Debian is doing
 
     sudo apt-get install libncursesw5 libncursesw5-dev
     sudo apt-get install --reinstall ruby ruby-dev
+
+It will probably not work on Windows but who cares.
 
 # Copying
 

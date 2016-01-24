@@ -58,10 +58,6 @@ module FDCLI
     UI.running do |action, data|
       Utils.log.info "action: #{action} #{data}"
       case action
-      when :scroll_up
-        UI.scroll_main up: true
-      when :scroll_down
-        UI.scroll_main up: false
       when :quit
         exit
       when :hover
@@ -98,16 +94,38 @@ module FDCLI
       nick = nicks.fetch user_id, 'unknown user'
       sent = Time.at(timestamp.to_i / 1000).strftime '%H:%M'
       day = Time.at(timestamp.to_i / 1000).strftime '%F'
-      thread = thread_id[-2..-1]
-      thread = '░▒▓█'#### XXX use combinations of this -or on hover?
+
+      #### XXX this isn't final
+      thread = ''
+      #markers = '▖▗▘▙▚▛▜▞▟░▒▓█'
+      thread_num = 0
+      thread_id[-4..-1].each_char do |c|
+        thread_num += c.ord
+      end
+      thread_length = 8
+      thread_start = thread_num % thread_length
+      thread_start_marker  = (' ' * thread_start) + '┌┐' + (' ' * (thread_length - thread_start))
+      thread_normal_marker = (' ' * thread_start) + '││' + (' ' * (thread_length - thread_start))
+      thread =  (thread_id == last_thread && day == start_day ? thread_normal_marker : thread_start_marker)
 
       out = []
       ##### TODO: make new element that renders with a prefix (so word-wrapping content doesn't destroy the left side)
       start_day = day if start_day.nil?
-      if day != start_day
-        out.push(UI::Element.new ["          ┌────────────────────────────────── #{day}"])
+      if thread_id != last_thread && !last_thread.nil? || (day != start_day)
+        # thread end marker
+        thread_num = 0
+        last_thread[-4..-1].each_char do |c|
+          thread_num += c.ord
+        end
+        thread_start = thread_num % thread_length
+        end_thread = (' ' * thread_start) + '└' + '┘' + (' ' * (thread_length - thread_start)) + '      │'
+        out.push(UI::Element.new ["#{end_thread}"])
       end
-      prefix = '          │    '
+      if day != start_day
+        out.push(UI::Element.new ["                ┌────────────────────────────────── #{day}"])
+      end
+      #### XXX start thread marker is displayed twice when it falls on a wrap_prefix
+      prefix = "#{thread_normal_marker}      │    "
       if nick == last_poster && day == start_day && thread_id == last_thread
         out.push(UI::Element.new [thread, " #{sent}┤ └─ ", content], wrap_prefix: prefix)
       else
