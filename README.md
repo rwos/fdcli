@@ -1,3 +1,5 @@
+# WORK IN PROGRESS, DO NOT USE (yet ;))
+
 # fdcli
 
 A visual command-line client for [Flowdock](https://www.flowdock.com) with
@@ -11,8 +13,8 @@ roughly vi/mutt like key bindings and mouse support.
 * create `~/.config/fdcli/config` and copy the token and your flowdock
   "organisation" name into it:
 
-  org: your-flowdock-org-name
-  token: b8227198b8ef6c57e2f55e34c3722706
+    org: your-flowdock-org-name
+    token: b8227198b8ef6c57e2f55e34c3722706
 
 # Usage
 
@@ -31,8 +33,8 @@ It will probably not work on Windows but who cares.
 The normal `ncurses` works but doesn't handle UTF-8 correctly, you'll need to
 link ruby to `ncursesw`. What seems to work on Debian is doing
 
-  sudo apt-get install libncursesw5 libncursesw5-dev
-  sudo apt-get install --reinstall ruby ruby-dev
+    sudo apt-get install libncursesw5 libncursesw5-dev
+    sudo apt-get install --reinstall ruby ruby-dev
 
 # Copying
 
