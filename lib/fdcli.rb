@@ -109,10 +109,9 @@ module FDCLI
       thread =  (thread_id == last_thread && day == start_day ? thread_normal_marker : thread_start_marker)
 
       out = []
-      ##### TODO: make new element that renders with a prefix (so word-wrapping content doesn't destroy the left side)
       start_day = day if start_day.nil?
       if thread_id != last_thread && !last_thread.nil? || (day != start_day)
-        # thread end marker
+        # thread end marker XXX cleanup
         thread_num = 0
         last_thread[-4..-1].each_char do |c|
           thread_num += c.ord
@@ -122,9 +121,8 @@ module FDCLI
         out.push(UI::Element.new ["#{end_thread}"])
       end
       if day != start_day
-        out.push(UI::Element.new ["                ┌────────────────────────────────── #{day}"])
+        out.push(UI::Element.new ["#{day} ─────┐"])
       end
-      #### XXX start thread marker is displayed twice when it falls on a wrap_prefix
       prefix = "#{thread_normal_marker}      │    "
       if nick == last_poster && day == start_day && thread_id == last_thread
         out.push(UI::Element.new [thread, " #{sent}┤ └─ ", content], wrap_prefix: prefix)
