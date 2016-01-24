@@ -6,10 +6,6 @@ require_relative 'utils'
 require_relative 'api'
 require_relative 'db'
 
-def update_flows
-  DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
-end
-
 module FDCLI
   def self.start(_options)
     puts 'hello'
@@ -19,7 +15,7 @@ module FDCLI
     Utils.log.info 'all good - starting'
     UI.init
     begin
-      update_flows
+      update_aux
       run 'berlin' ###### XXX XXX XXX
     rescue StandardError => e
       puts e.message
@@ -29,6 +25,12 @@ module FDCLI
   end
 
   class FlowSelector < UI::Element
+  end
+
+  def self.update_aux
+    DB.into :users, Api.get("/organizations/#{Utils::ORG}/users"), 'id', 'nick', 'name', 'email'
+    DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
+    DB.into :private, Api.get('/private'), 'id', 'name', 'open'
   end
 
   def self.run(current_flow)
