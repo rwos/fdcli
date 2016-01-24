@@ -6,6 +6,10 @@ require_relative 'utils'
 require_relative 'api'
 require_relative 'db'
 
+def update_flows
+  DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
+end
+
 module FDCLI
   def self.start(_options)
     puts 'hello'
@@ -15,6 +19,7 @@ module FDCLI
     Utils.log.info 'all good - starting'
     UI.init
     begin
+      update_flows
       run 'berlin' ###### XXX XXX XXX
     rescue StandardError => e
       puts e.message
@@ -29,7 +34,7 @@ module FDCLI
   def self.run(current_flow)
     UI.fill :flows,
       DB.from(:flows, 'joined', 'name', 'parameterized_name')
-      .select { |row| row.first === 'True' }
+      .select { |row| row.first === 'true' }
       .map { |row|
         _, name, param_name = row
         if (param_name.strip === current_flow)
@@ -51,8 +56,8 @@ module FDCLI
         UI::Element.new [:underline, "#{name} (#{param_name})", :endunderline, "\n#{description}"]
       }
     ##### XXX XXX return to simple map
-    #| DB.select('joined', 'name', 'parameterized_name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
-    #UI.fill :flows, DB.from(:flows) | DB.select('joined', 'name', 'parameterized_name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
+    #| DB.select('joined', 'name', 'parameterized_name') | DB.where('true') | DB.fmt('(selectable %s)', 1)
+    #UI.fill :flows, DB.from(:flows) | DB.select('joined', 'name', 'parameterized_name') | DB.where('true') | DB.fmt('(selectable %s)', 1)
     #UI.fill :chats, DB.from(:private) | DB.select('open', 'name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
     #UI.fill :main_input, 'huhuh'
     UI.running do |action, data|

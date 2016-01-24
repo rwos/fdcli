@@ -25,6 +25,27 @@ module DB
       end
   end
 
+  def self.into(name, json, *json_fields)
+    data = json.map do |row|
+      row.values_at(*json_fields).map do |datum|
+        unless datum.is_a? String
+          datum.to_s
+        else
+          datum.gsub! "\n", '\n'
+          datum.gsub! "\t", '\t'
+          datum = "NULL" if datum.length < 1
+          datum
+        end
+      end
+    end
+    lines = [json_fields.join("\t")]
+    data.each do |row|
+      lines.push row.join("\t")
+    end
+    final = lines.join("\n")
+    File.write "#{BASEDIR}/#{name}.db", final
+  end
+
   def self.from_messages(name, *select)
       from "#{name}.messages", *select
   end
