@@ -99,17 +99,20 @@ module FDCLI
       day = Time.at(timestamp.to_i / 1000).strftime '%F'
 
       out = []
+      ##### TODO: make new element that renders with a prefix (so word-wrapping content doesn't destroy the left side)
       start_day = day if start_day.nil?
       if day != start_day
         out.push(UI::Element.new ["     ┌────────────────────────────────── #{day}"])
-        start_day = day
       end
-      if nick == last_poster ### TODO: also check thread (different threads should show nick again)
-        out.push(UI::Element.new ["#{sent}│ ", ' ' * (nick.length + 1), content])
+      prefix = '     │    '
+      if nick == last_poster && day == start_day ### TODO: also check thread (different threads should show nick again)
+        out.push(UI::Element.new ["#{sent}┤ └─ ", content], wrap_prefix: prefix)
       else
         last_poster = nick
-        out.push(UI::Element.new ["#{sent}│ ", :bold, nick, :endbold, " ", content])
+        out.push(UI::Element.new ["#{sent}┤ ", :bold, nick, :endbold, " ", content], wrap_prefix: prefix)
       end
+      start_day = day
+      out
     }
   end
 

@@ -16,6 +16,35 @@ module UI
   def self.make_windows
     clear
     refresh
+    ### XXX move windows into main app
+    # R = Rational
+    # windows = [
+    #   # vertical divisions ### XXX SHOULD BE VBOX
+    #   {'25%' => :left, 1 => :EMPTY, :rest => :right},
+    #   # horizontal divisions XXX SHOULD BE HBOX
+    #   {
+    #     left: {
+    #       '50%' => :flows,
+    #       1 => :EMPTY,
+    #       :rest => :chats
+    #     },
+    #     right: {
+    #       2 => :main_info,
+    #       1 => :EMPTY,
+    #       :rest => :main,
+    #       1 => :EMPTY,
+    #       2 => :main_input,
+    #     }
+    #     main: { ### XXX SHOULD BE VBOX
+    #       # now vertical divisions again
+    #       5 => :main_lefthand,
+    #       :rest => :main_content,
+    #     }
+    #   }
+    # ]
+    #
+    # scrolling? and especially linked scrolling... (main_lefthand + main_content)
+    # ===> for that the whole VBOX has to be a PAD ===> it scrolls inside the hbox
     @win[:flows] = Window.new lines / 3 * 2, cols / 4, 0, 0
     @win[:chats] = Window.new lines / 3, cols / 4, lines / 3 * 2, 0
     @win[:main_window] = Window.new lines - 7, (cols / 4) * 3, 3, cols / 4
@@ -160,11 +189,12 @@ module UI
   class Element
     attr_accessor :pos
     attr_reader :text, :hoverable, :clickable, :state
-    def initialize(text, hoverable: false, clickable: false, state: nil)
+    def initialize(text, hoverable: false, clickable: false, state: nil, wrap_prefix: '')
       @text = text
       @hoverable = hoverable
       @clickable = clickable
       @state = state
+      @wrap_prefix = wrap_prefix
     end
     def render(w)
       map = {
@@ -173,6 +203,8 @@ module UI
         underline: A_UNDERLINE,
       }
       ##### XXX TODO: Element is more like a <div>, and these should be <span>s (including hover + click and shit)
+      line_sz = w.maxx - 1
+      line_left = line_sz
       @text.each do |part|
         if part.is_a? Symbol
           if part =~ /^end/
@@ -184,7 +216,40 @@ module UI
             w.attron map[part]
           end
         else
-          w.addstr part
+          part.each_char do |c|
+            if line_left < 1 || c === "\n"
+              w.addstr "\n"
+              line_left = line_sz
+              w.addstr @wrap_prefix
+              line_left -= @wrap_prefix.length
+              unless c =~ /\s/
+                w.addstr c
+                line_left -= c.length
+              end
+            else
+              w.addstr c
+              line_left -= c.length
+            end
+          end
+          ##### XXX this is better, but breaks real linebreaks and things starting with whitespace
+          #words.each do |word|
+          #  if word.length < line_left
+          #    w.addstr word
+          #    w.addstr ' '
+          #    line_left -= (word.length + 1)
+          #  elsif word.length <= line_sz
+          #    # word doesn't fit on this line, but it _does_ fit on one line
+          #    w.addstr "\n"
+          #    line_left = line_sz
+          #    w.addstr @wrap_prefix
+          #    line_left -= @wrap_prefix.length
+          #    w.addstr word
+          #    w.addstr ' ' if word.length < line_sz
+          #    line_left -= (word.length + 1)
+          #  else
+          #    # hard-wrap
+          #    ### XXX use from above
+          #end
         end
       end
     end
