@@ -88,6 +88,7 @@ module FDCLI
 
     start_day = nil;
     last_poster = nil;
+    last_thread = nil;
     DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content')
     .reverse
     .select { |row| row.first === 'message' }
@@ -97,21 +98,24 @@ module FDCLI
       nick = nicks.fetch user_id, 'unknown user'
       sent = Time.at(timestamp.to_i / 1000).strftime '%H:%M'
       day = Time.at(timestamp.to_i / 1000).strftime '%F'
+      thread = thread_id[-2..-1]
+      thread = '░▒▓█'#### XXX use combinations of this -or on hover?
 
       out = []
       ##### TODO: make new element that renders with a prefix (so word-wrapping content doesn't destroy the left side)
       start_day = day if start_day.nil?
       if day != start_day
-        out.push(UI::Element.new ["     ┌────────────────────────────────── #{day}"])
+        out.push(UI::Element.new ["          ┌────────────────────────────────── #{day}"])
       end
-      prefix = '     │    '
-      if nick == last_poster && day == start_day ### TODO: also check thread (different threads should show nick again)
-        out.push(UI::Element.new ["#{sent}┤ └─ ", content], wrap_prefix: prefix)
+      prefix = '          │    '
+      if nick == last_poster && day == start_day && thread_id == last_thread
+        out.push(UI::Element.new [thread, " #{sent}┤ └─ ", content], wrap_prefix: prefix)
       else
-        last_poster = nick
-        out.push(UI::Element.new ["#{sent}┤ ", :bold, nick, :endbold, " ", content], wrap_prefix: prefix)
+        out.push(UI::Element.new [thread, " #{sent}┤ ", :bold, nick, :endbold, " ", content], wrap_prefix: prefix)
       end
       start_day = day
+      last_poster = nick
+      last_thread = thread_id
       out
     }
   end
