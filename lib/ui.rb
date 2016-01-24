@@ -97,10 +97,20 @@ module UI
 
   def self.scroll_main(up: true) ## XXX doesn't have to be public
     @current_main_scroll += up ? -1 : 1
-    @current_main_scroll = 0 if @current_main_scroll < 0
+    hit_ends = false
+    if @current_main_scroll <= 0
+      @current_main_scroll = 0
+      hit_ends = true
+    end
     w = @win[:main]
     wm = @win[:main_window]
+    max_scroll = w.cury - (wm.maxy - wm.begy)
+    if @current_main_scroll >= max_scroll
+      @current_main_scroll = max_scroll
+      hit_ends = true
+    end
     w.refresh @current_main_scroll, 0, wm.begy, wm.begx, wm.begy + wm.maxy, wm.begx + wm.maxx
+    hit_ends
   end
 
   def self.init()
@@ -131,11 +141,13 @@ module UI
           hit = fire_click(m.x, m.y)
           yield :click, hit if hit
         when BUTTON4_PRESSED
-          scroll_main up: true
+          hit_top = scroll_main up: true
+          yield :scroll_top if hit_top
         when REPORT_MOUSE_POSITION
           ### XXX hack - scroll down only seems to report mouse position
           if @current_mouse_position == [m.x, m.y]
-            scroll_main up: false
+            hit_bottom = scroll_main up: false
+            yield :scroll_bottom if hit_bottom
           else
             was_hover = false
             fire_hover(m.x, m.y).each do |hit|
@@ -152,9 +164,11 @@ module UI
       when 'q'
         yield :quit
       when 'k'
-        scroll_main up: true
+        hit_top = scroll_main up: true
+        yield :scroll_top if hit_top
       when 'j'
-        scroll_main up: false
+        hit_bottom = scroll_main up: false
+        yield :scroll_bottom if hit_bottom
       else
         yield :unknown, k
       end
