@@ -15,18 +15,15 @@ module DB
       end
       f.close
 
-      if select
-        head = table.first
-        data = table.drop 1
-        return [] if head.nil? || data.nil?
-        indices = select.map { |a| head.find_index a }
-        data.map { |line| line.values_at(*indices) }
-      else
-        table
-      end
+      head = table.first
+      data = table.drop 1
+      return [] if head.nil? || data.nil?
+      return data if select.empty?
+      indices = select.map { |a| head.find_index a }
+      data.map { |line| line.values_at(*indices) }
   end
 
-  def self.json_to_db(json, *json_fields)
+  def self.json_to_db(json, *json_fields, as_string: true)
     data = json.map do |row|
       row.values_at(*json_fields).map do |datum|
         unless datum.is_a? String
@@ -39,6 +36,7 @@ module DB
         end
       end
     end
+    return data unless as_string
     lines = [json_fields.join("\t")]
     data.each do |row|
       lines.push row.join("\t")
@@ -51,8 +49,31 @@ module DB
   end
 
   def self.add_to_messages(name, json, *json_fields)
-    new_data = json_to_db json, *json_fields
-    #old_data = from_messages(name
+    old_data = from_messages name
+    old_hash = {}
+    old_data.each do |line|
+      old_hash[line.first] = line.drop 1
+    end
+
+    new_data = json_to_db json, *json_fields, as_string: false
+    new_hash = {}
+    new_data.each do |line|
+      new_hash[line.first] = line.drop 1
+    end
+
+    combined_hash = old_hash.merge new_hash
+    combined_data = combined_hash.collect do |k, v|
+      [k] + v
+    end
+
+    lines = [json_fields.join("\t")]
+    combined_data.each do |row|
+      lines.push row.join("\t")
+    end
+    lines = lines.join("\n")
+
+    Utils.log.info "updating messages for #{name}"
+    File.write "#{BASEDIR}/#{name}.messages.db", lines
   end
 
   def self.from_messages(name, *select)

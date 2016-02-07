@@ -34,11 +34,15 @@ module FDCLI
   end
 
   def self.update_aux
-    DB.into :users, Api.get("/organizations/#{Utils::ORG}/users"), 'id', 'nick', 'name', 'email'
-    DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
-    DB.into :private, Api.get('/private'), 'id', 'name', 'open'
+    #DB.into :users, Api.get("/organizations/#{Utils::ORG}/users"), 'id', 'nick', 'name', 'email'
+    #DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
+    #DB.into :private, Api.get('/private'), 'id', 'name', 'open'
+    #### XXX TODO: since_id handling
+    flow = 'scholar-dev-panic'
+    DB.add_to_messages flow, Api.get("/flows/#{Utils::ORG}/#{flow}/messages?limit=100"), 'id', 'sent', 'event', 'thread_id', 'user', 'tags', 'content'
   end
 
+    #### XXX XXX TODO
   #def self.update_flow(flow, mode)
     #DB.add_to_messages flow
   #  case mode
