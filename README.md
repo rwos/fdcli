@@ -5,6 +5,9 @@
 A visual command-line client for [Flowdock](https://www.flowdock.com) with
 roughly vi/mutt like key bindings and mouse support.
 
+So it's basically like Tinder but for Flowdock and on a VT100 terminal.
+Imagine Netflix on a typewriter but more like Spotify but with less music.
+
 # Install
 
 * `gem install fdcli` (maybe with sudo)
