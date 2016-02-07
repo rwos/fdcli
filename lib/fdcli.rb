@@ -15,7 +15,7 @@ module FDCLI
     Utils.log.info 'all good - starting'
     UI.init
     begin
-      update_aux
+      #update_aux ###X XXX
       run 'berlin' ###### XXX XXX XXX
     rescue StandardError => e
       puts e.message
@@ -27,13 +27,29 @@ module FDCLI
   class FlowSelector < UI::Element
   end
 
+  class PrivateChatSelector < UI::Element
+  end
+
   def self.update_aux
     DB.into :users, Api.get("/organizations/#{Utils::ORG}/users"), 'id', 'nick', 'name', 'email'
     DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
     DB.into :private, Api.get('/private'), 'id', 'name', 'open'
   end
 
-  def self.run(current_flow)
+  # XXX TODO
+  #def self.update_flow(flow, mode: = :latest)
+  #  case mode
+  #  when :above_top
+  #    #since_id = ... ? or until_id?
+  #  when :below_bottom
+  #    #since_id = ... ? or until_id?
+  #  end
+  #  # api_get "/flows/$ORG/$flow_name/messages?limit=100&since_id=$since_id" | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
+  #  #  api_get /flows/$ORG/$flow_name/messages?limit=100 | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
+  #end
+
+  def self.run(current_flow, is_private: false)
+
     UI.fill :flows,
       DB.from(:flows, 'joined', 'name', 'parameterized_name')
       .select { |row| row.first === 'true' }
@@ -49,7 +65,17 @@ module FDCLI
       .unshift(UI::Element.new [''])
       .unshift(UI::Element.new [:underline, "Flows", :endunderline])
 
-    UI.fill :main, main_content(current_flow)
+    UI.fill :chats,
+      DB.from(:private, 'open', 'name')
+      .select { |row| row.first === 'true' }
+      .map { |row|
+        _, name = row
+        PrivateChatSelector.new [name], hoverable: true, clickable: true, state: name
+      }
+      .unshift(UI::Element.new [''])
+      .unshift(UI::Element.new [:underline, "Private", :endunderline])
+
+    UI.fill :main, main_content(current_flow, is_private)
     UI.fill :main_info,
       DB.from(:flows, 'parameterized_name', 'name', 'description')
       .select { |row| row.first === current_flow }
@@ -58,9 +84,6 @@ module FDCLI
         UI::Element.new [:underline, "#{name} (#{param_name})", :endunderline, "\n#{description}"]
       }
     ##### XXX XXX return to simple map
-    #| DB.select('joined', 'name', 'parameterized_name') | DB.where('true') | DB.fmt('(selectable %s)', 1)
-    #UI.fill :flows, DB.from(:flows) | DB.select('joined', 'name', 'parameterized_name') | DB.where('true') | DB.fmt('(selectable %s)', 1)
-    #UI.fill :chats, DB.from(:private) | DB.select('open', 'name') | DB.where('True') | DB.fmt('(selectable %s)', 1)
     #UI.fill :main_input, 'huhuh'
     UI.running do |action, data|
       Utils.log.info "action: #{action} #{data}"
@@ -71,6 +94,8 @@ module FDCLI
         case data
         when FlowSelector
           display_help "Switch to #{data.text[0]} (#{data.state})"
+        when PrivateChatSelector
+          display_help "Switch to private chat with #{data.state}"
         end
       when :unhover
         display_help ''
@@ -78,12 +103,14 @@ module FDCLI
         case data
         when FlowSelector
           run data.state
+        when PrivateChatSelector
+          run data.state, is_private: true
         end
       end
     end
   end
 
-  def self.main_content(current_flow)
+  def self.main_content(current_flow, is_private)
     ### XXX TODO scrolling: if we're at the top of the pad, put new data into it
     ###          - maybe implement as an event, too
     nicks = {}
