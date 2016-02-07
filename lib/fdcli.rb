@@ -15,8 +15,11 @@ module FDCLI
     Utils.log.info 'all good - starting'
     UI.init
     begin
-      #update_aux ###X XXX
-      run 'berlin' ###### XXX XXX XXX
+      update_aux
+      _, first_flow = DB.from(:flows, 'joined', 'parameterized_name')
+        .select { |row| row.first === 'true' }
+        .first
+      run first_flow
     rescue StandardError => e
       puts e.message
       Utils.log.fatal e
@@ -36,8 +39,8 @@ module FDCLI
     DB.into :private, Api.get('/private'), 'id', 'name', 'open'
   end
 
-  # XXX TODO
-  #def self.update_flow(flow, mode: = :latest)
+  #def self.update_flow(flow, mode)
+    #DB.add_to_messages flow
   #  case mode
   #  when :above_top
   #    #since_id = ... ? or until_id?
@@ -81,6 +84,7 @@ module FDCLI
       .select { |row| row.first === current_flow }
       .map { |row|
         param_name, name, description = row
+        description = '' if description == 'NULL'
         UI::Element.new [:underline, "#{name} (#{param_name})", :endunderline, "\n#{description}"]
       }
     ##### XXX XXX return to simple map
