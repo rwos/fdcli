@@ -118,6 +118,19 @@ module FDCLI
     end
   end
 
+  def self.render_message(content)
+    parts = content.scan /[^\s]*\s?/
+    parts.flat_map do |p|
+      # user name
+      if p =~ /^@/
+        tmp = p.match /^@(\w*)(.*)/
+        [:bold, tmp[1], :endbold, tmp[2]]
+      else
+        p
+      end
+    end
+  end
+
   def self.main_content(current_flow, is_private)
     ### XXX TODO scrolling: if we're at the top of the pad, put new data into it
     ###          - maybe implement as an event, too
@@ -127,12 +140,13 @@ module FDCLI
     start_day = nil;
     last_poster = nil;
     last_thread = nil;
-    DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content')
-    .reverse
-    .select { |row| row.first === 'message' }
+    DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content') ## TODO use tags?
+    .reverse ###### XXX XXX TODO: actually order by sent time
+    .select { |row| row.first === 'message' } ### TODO: also let other stuff through
     .flat_map { |row|
       _, thread_id, timestamp, user_id, content = row
       content = '' if content.nil?
+      rendered_content = render_message(content)
       nick = nicks.fetch user_id, 'unknown user'
       sent = Time.at(timestamp.to_i / 1000).strftime '%H:%M'
       day = Time.at(timestamp.to_i / 1000).strftime '%F'
@@ -167,9 +181,9 @@ module FDCLI
       end
       prefix = "#{thread_normal_marker}      │    "
       if nick == last_poster && day == start_day && thread_id == last_thread
-        out.push(UI::Element.new [thread, " #{sent}┤ └─ ", content], wrap_prefix: prefix)
+        out.push(UI::Element.new [thread, " #{sent}┤ └─ ", *rendered_content], wrap_prefix: prefix)
       else
-        out.push(UI::Element.new [thread, " #{sent}┤ ", :bold, nick, :endbold, " ", content], wrap_prefix: prefix)
+        out.push(UI::Element.new [thread, " #{sent}┤ ", :bold, nick, :endbold, " ", *rendered_content], wrap_prefix: prefix)
       end
       start_day = day
       last_poster = nick
