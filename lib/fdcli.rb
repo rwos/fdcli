@@ -119,6 +119,7 @@ module FDCLI
   end
 
   def self.render_message(content)
+    return ['──── deleted ────'] if content == 'NULL'
     parts = content.scan /[^\s]*\s?/
     parts.flat_map do |p|
       # user name
@@ -141,7 +142,13 @@ module FDCLI
     last_poster = nil;
     last_thread = nil;
     DB.from_messages(current_flow, 'event', 'thread_id', 'sent', 'user', 'content') ## TODO use tags?
-    .reverse ###### XXX XXX TODO: actually order by sent time
+    .sort { |a, b|
+      _, _, a_sent, _, _ = a
+      _, _, b_sent, _, _ = b
+      a_sent = "0" if a_sent.nil?
+      b_sent = "0" if b_sent.nil?
+      a_sent <=> b_sent
+    }
     .select { |row| row.first === 'message' } ### TODO: also let other stuff through
     .flat_map { |row|
       _, thread_id, timestamp, user_id, content = row
