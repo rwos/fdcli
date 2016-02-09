@@ -8,10 +8,10 @@ require_relative 'db'
 
 module FDCLI
   def self.start(_options)
-    puts 'hello'
+    puts 'Hello! Checking if we can connect to flowdock...'
     Utils.log.info 'hello world'
     Utils.init_config
-    #Api.test_connection ### XXX switch on again
+    Api.test_connection
     Utils.log.info 'all good - starting'
     UI.init
     begin

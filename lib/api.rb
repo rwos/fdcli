@@ -10,7 +10,7 @@ module Api
   def self.test_connection
     Utils.log.info 'testing connection to flowdock'
     begin
-      api_get "/organizations/#{ORG}"
+      get "/organizations/#{ORG}"
     rescue StandardError => e
       Utils.log.fatal e
       Utils.fatal_token_error
