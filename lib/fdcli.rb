@@ -19,6 +19,7 @@ module FDCLI
       _, first_flow = DB.from(:flows, 'joined', 'parameterized_name')
         .select { |row| row.first === 'true' }
         .first
+      update_flow first_flow, :below_bottom
       run first_flow
     rescue StandardError => e
       puts e.message
@@ -34,26 +35,29 @@ module FDCLI
   end
 
   def self.update_aux
-    #DB.into :users, Api.get("/organizations/#{Utils::ORG}/users"), 'id', 'nick', 'name', 'email'
-    #DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
-    #DB.into :private, Api.get('/private'), 'id', 'name', 'open'
-    #### XXX TODO: since_id handling
-    flow = 'scholar-dev-panic'
-    DB.add_to_messages flow, Api.get("/flows/#{Utils::ORG}/#{flow}/messages?limit=100"), 'id', 'sent', 'event', 'thread_id', 'user', 'tags', 'content'
+    DB.into :users, Api.get("/organizations/#{Utils::ORG}/users"), 'id', 'nick', 'name', 'email'
+    DB.into :flows, Api.get('/flows/all'), 'id', 'parameterized_name', 'name', 'description', 'joined'
+    DB.into :private, Api.get('/private'), 'id', 'name', 'open'
   end
 
-    #### XXX XXX TODO
-  #def self.update_flow(flow, mode)
-    #DB.add_to_messages flow
-  #  case mode
-  #  when :above_top
-  #    #since_id = ... ? or until_id?
-  #  when :below_bottom
-  #    #since_id = ... ? or until_id?
-  #  end
-  #  # api_get "/flows/$ORG/$flow_name/messages?limit=100&since_id=$since_id" | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
-  #  #  api_get /flows/$ORG/$flow_name/messages?limit=100 | json_to_db id sent event thread_id user tags content | db_store_messages ${flow_name}
-  #end
+  def self.update_flow(flow, mode)
+    head_id, tail_id = DB.messages_boundaries flow
+    case mode
+    when :above_top
+      if top_id
+        ### TODO: get only stuff above the top id
+      else
+        new = Api.get "/flows/#{Utils::ORG}/#{flow}/messages?limit=100"
+      end
+    when :below_bottom
+      new = Api.get "/flows/#{Utils::ORG}/#{flow}/messages?limit=100"
+      if tail_id
+        ### TODO: check if we hit the tail_id
+        ### TODO: re-run if we didn't hit the tail_id yet
+      end
+    end
+    DB.add_to_messages flow, new, 'id', 'sent', 'event', 'thread_id', 'user', 'tags', 'content'
+  end
 
   def self.run(current_flow, is_private: false)
 
@@ -110,6 +114,7 @@ module FDCLI
       when :click
         case data
         when FlowSelector
+          update_flow data.state, :below_bottom
           run data.state
         when PrivateChatSelector
           run data.state, is_private: true

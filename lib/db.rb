@@ -80,6 +80,17 @@ module DB
       from "#{name}.messages", *select
   end
 
+  def self.messages_boundaries(name)
+    # assumption: first field is the ID
+    tail_line = `tail -n 1 '#{BASEDIR}/#{name}.messages.db'`
+    tail_line = '' unless tail_line
+    tail_id, *_ = tail_line.split "\t"
+    head_line = `head -n 1 '#{BASEDIR}/#{name}.messages.db'`
+    head_line = '' unless head_line
+    head_id, *_ = head_line.split "\t"
+    [head_id, tail_id]
+  end
+
   def self.select(*args)
     Utils.log.info args
     -> (table) {
